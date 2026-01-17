@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Draw Circle - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <script src="https://unpkg.com/@turf/turf@latest"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 300px;
+    }
+    .control-panel h3 { margin: 0 0 10px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .radius-control {
+      margin-bottom: 15px;
+    }
+    .radius-control label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .radius-control input { width: 100%; }
+    .radius-value {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 700;
+      color: #3182ce;
+      margin: 10px 0;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #3182ce; color: white; }
+    .btn-primary:hover { background: #2c5282; }
+    .btn-danger { background: #e53e3e; color: white; }
+    .btn-danger:hover { background: #c53030; }
+    .btn-outline { background: white; border: 2px solid #e2e8f0; color: #666; }
+    .btn-outline:hover { border-color: #3182ce; color: #3182ce; }
+
+    .mode-indicator {
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .mode-draw { background: #c6f6d5; color: #22543d; }
+    .mode-view { background: #e2e8f0; color: #4a5568; }
+
+    .circle-info {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: #666;
+    }
+    .circle-info strong { color: #1a365d; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    #map.draw-mode { cursor: crosshair; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">←</a>
+
+<div class="control-panel">
+  <h3>Draw Circle</h3>
+  <p>Click on the map to place a circle center, then adjust the radius.</p>
+
+  <div class="radius-control">
+    <label>Radius</label>
+    <div class="radius-value" id="radiusValue">5 km</div>
+    <input type="range" id="radiusSlider" min="1" max="50" value="5" oninput="updateRadius(this.value)">
+  </div>
+
+  <div class="btn-group">
+    <button class="btn btn-primary" id="drawBtn" onclick="toggleDrawMode()">Start Drawing</button>
+    <button class="btn btn-danger" onclick="clearCircle()">Clear</button>
+  </div>
+
+  <div class="mode-indicator mode-view" id="modeIndicator">View Mode</div>
+
+  <div class="circle-info" id="circleInfo" style="display: none;">
+    <p><strong>Center:</strong> <span id="centerCoords">-</span></p>
+    <p><strong>Area:</strong> <span id="circleArea">-</span></p>
+  </div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  let drawMode = false;
+  let circleCenter = null;
+  let circleRadius = 5; // km
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.5, 24.4],
+    zoom: 9
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      map.setStyle(to.styleUrl);
+      map.once('style.load', () => {
+        setEnglishLabels();
+        map.addSource('circle', {
+          type: 'geojson',
+          data: circleCenter ? turf.circle(circleCenter, circleRadius, { units: 'kilometers', steps: 64 }) : { type: 'FeatureCollection', features: [] }
+        });
+        map.addLayer({ id: 'circle-fill', type: 'fill', source: 'circle', paint: { 'fill-color': '#3182ce', 'fill-opacity': 0.2 } });
+        map.addLayer({ id: 'circle-outline', type: 'line', source: 'circle', paint: { 'line-color': '#3182ce', 'line-width': 3 } });
+      });
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  map.on('load', () => {
+    map.addSource('circle', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+      id: 'circle-fill',
+      type: 'fill',
+      source: 'circle',
+      paint: {
+        'fill-color': '#3182ce',
+        'fill-opacity': 0.2
+      }
+    });
+
+    map.addLayer({
+      id: 'circle-outline',
+      type: 'line',
+      source: 'circle',
+      paint: {
+        'line-color': '#3182ce',
+        'line-width': 3
+      }
+    });
+
+    setEnglishLabels();
+  });
+
+  map.on('click', (e) => {
+    if (!drawMode) return;
+
+    circleCenter = [e.lngLat.lng, e.lngLat.lat];
+    drawCircle();
+    updateCircleInfo();
+    toggleDrawMode();
+  });
+
+  function toggleDrawMode() {
+    drawMode = !drawMode;
+    const btn = document.getElementById('drawBtn');
+    const indicator = document.getElementById('modeIndicator');
+    const mapEl = document.getElementById('map');
+
+    if (drawMode) {
+      btn.textContent = 'Cancel';
+      btn.className = 'btn btn-outline';
+      indicator.textContent = 'Click on map to place center';
+      indicator.className = 'mode-indicator mode-draw';
+      mapEl.classList.add('draw-mode');
+    } else {
+      btn.textContent = 'Start Drawing';
+      btn.className = 'btn btn-primary';
+      indicator.textContent = 'View Mode';
+      indicator.className = 'mode-indicator mode-view';
+      mapEl.classList.remove('draw-mode');
+    }
+  }
+
+  function updateRadius(value) {
+    circleRadius = parseInt(value);
+    document.getElementById('radiusValue').textContent = value + ' km';
+    if (circleCenter) {
+      drawCircle();
+      updateCircleInfo();
+    }
+  }
+
+  function drawCircle() {
+    if (!circleCenter) return;
+
+    const circle = turf.circle(circleCenter, circleRadius, { units: 'kilometers', steps: 64 });
+    map.getSource('circle').setData(circle);
+  }
+
+  function clearCircle() {
+    circleCenter = null;
+    map.getSource('circle').setData({ type: 'FeatureCollection', features: [] });
+    document.getElementById('circleInfo').style.display = 'none';
+    if (drawMode) toggleDrawMode();
+  }
+
+  function updateCircleInfo() {
+    const info = document.getElementById('circleInfo');
+    info.style.display = 'block';
+
+    document.getElementById('centerCoords').textContent =
+      `${circleCenter[0].toFixed(4)}, ${circleCenter[1].toFixed(4)}`;
+
+    const area = Math.PI * circleRadius * circleRadius;
+    document.getElementById('circleArea').textContent =
+      area < 1 ? `${(area * 1000000).toFixed(0)} m²` : `${area.toFixed(2)} km²`;
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>

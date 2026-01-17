@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Filter by City - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 320px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .quick-btn {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover { border-color: #3182ce; color: #3182ce; }
+
+    .stats-bar {
+      background: #f7fafc;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .stats-bar span { font-size: 13px; color: #4a5568; }
+    .stats-bar strong { color: #3182ce; }
+
+    .city-section {
+      margin-bottom: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .city-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      cursor: pointer;
+      background: #f8fafc;
+      transition: background 0.2s;
+    }
+    .city-header:hover { background: #edf2f7; }
+    .city-header input { width: 18px; height: 18px; cursor: pointer; }
+    .city-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: white;
+    }
+    .city-name { flex: 1; font-weight: 600; font-size: 14px; color: #1a365d; }
+    .city-count {
+      font-size: 11px;
+      background: #e2e8f0;
+      padding: 3px 10px;
+      border-radius: 12px;
+      color: #4a5568;
+      font-weight: 600;
+    }
+    .expand-icon {
+      font-size: 12px;
+      color: #718096;
+      transition: transform 0.2s;
+    }
+    .city-section.expanded .expand-icon { transform: rotate(180deg); }
+
+    .places-list {
+      display: none;
+      padding: 8px;
+      background: white;
+      border-top: 1px solid #e2e8f0;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .city-section.expanded .places-list { display: block; }
+
+    .place-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .place-item:hover { background: #f7fafc; }
+    .place-item input { width: 16px; height: 16px; cursor: pointer; }
+    .place-icon {
+      font-size: 16px;
+      width: 24px;
+      text-align: center;
+    }
+    .place-info { flex: 1; min-width: 0; }
+    .place-name {
+      font-size: 13px;
+      color: #2d3748;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .place-category {
+      font-size: 10px;
+      color: #718096;
+    }
+    .place-fly {
+      padding: 4px 8px;
+      font-size: 10px;
+      background: #ebf8ff;
+      color: #3182ce;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .place-item:hover .place-fly { opacity: 1; }
+    .place-fly:hover { background: #bee3f8; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    /* Scrollbar styling */
+    .control-panel::-webkit-scrollbar,
+    .places-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .control-panel::-webkit-scrollbar-track,
+    .places-list::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+    .control-panel::-webkit-scrollbar-thumb,
+    .places-list::-webkit-scrollbar-thumb {
+      background: #c4c4c4;
+      border-radius: 3px;
+    }
+    .control-panel::-webkit-scrollbar-thumb:hover,
+    .places-list::-webkit-scrollbar-thumb:hover {
+      background: #a0a0a0;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>Filter UAE Places</h3>
+  <p>Click a city to expand and see places</p>
+
+  <div class="stats-bar">
+    <span>Showing <strong id="visibleCount">0</strong> of <strong id="totalCount">0</strong> places</span>
+  </div>
+
+  <div class="quick-actions">
+    <button class="quick-btn" onclick="selectAll()">Show All</button>
+    <button class="quick-btn" onclick="selectNone()">Hide All</button>
+    <button class="quick-btn" onclick="collapseAll()">Collapse</button>
+  </div>
+
+  <div id="cityList"></div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  // Style items for the style switcher plugin
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  const cities = [
+    { id: 'abudhabi', name: 'Abu Dhabi', icon: '🕌', color: '#805ad5', center: [54.3773, 24.4539] },
+    { id: 'dubai', name: 'Dubai', icon: '🏙️', color: '#3182ce', center: [55.2708, 25.2048] },
+    { id: 'sharjah', name: 'Sharjah', icon: '🎭', color: '#d69e2e', center: [55.3908, 25.3573] },
+    { id: 'ajman', name: 'Ajman', icon: '🌊', color: '#0891b2', center: [55.5136, 25.4052] },
+    { id: 'fujairah', name: 'Fujairah', icon: '⛰️', color: '#38a169', center: [56.3264, 25.1288] },
+    { id: 'rak', name: 'Ras Al Khaimah', icon: '🏔️', color: '#e53e3e', center: [55.9432, 25.7895] },
+    { id: 'uaq', name: 'Umm Al Quwain', icon: '🦩', color: '#d53f8c', center: [55.5550, 25.5647] }
+  ];
+
+  const categoryIcons = {
+    'Landmark': '🏛️',
+    'Hotel': '🏨',
+    'Beach': '🏖️',
+    'Shopping': '🛍️',
+    'Museum': '🎨',
+    'Mosque': '🕌',
+    'Theme Park': '🎢',
+    'Water Park': '💦',
+    'Nature': '🌿',
+    'Restaurant': '🍽️',
+    'Park': '🌳',
+    'Heritage': '🏺',
+    'Activity': '⚡',
+    'Viewpoint': '👁️'
+  };
+
+  const places = [
+    // Abu Dhabi
+    { name: 'Sheikh Zayed Grand Mosque', coords: [54.4747, 24.4128], city: 'abudhabi', category: 'Mosque' },
+    { name: 'Louvre Abu Dhabi', coords: [54.3983, 24.5339], city: 'abudhabi', category: 'Museum' },
+    { name: 'Qasr Al Watan', coords: [54.3140, 24.4625], city: 'abudhabi', category: 'Landmark' },
+    { name: 'Emirates Palace', coords: [54.3177, 24.4615], city: 'abudhabi', category: 'Hotel' },
+    { name: 'Ferrari World', coords: [54.6072, 24.4833], city: 'abudhabi', category: 'Theme Park' },
+    { name: 'Warner Bros World', coords: [54.6100, 24.4850], city: 'abudhabi', category: 'Theme Park' },
+    { name: 'Yas Waterworld', coords: [54.6000, 24.4889], city: 'abudhabi', category: 'Water Park' },
+    { name: 'Yas Mall', coords: [54.6072, 24.4889], city: 'abudhabi', category: 'Shopping' },
+    { name: 'Corniche Beach', coords: [54.3500, 24.4700], city: 'abudhabi', category: 'Beach' },
+    { name: 'Saadiyat Beach', coords: [54.4350, 24.5400], city: 'abudhabi', category: 'Beach' },
+    { name: 'Heritage Village', coords: [54.3122, 24.4778], city: 'abudhabi', category: 'Heritage' },
+    { name: 'Mangrove National Park', coords: [54.4400, 24.4550], city: 'abudhabi', category: 'Nature' },
+    { name: 'Observation Deck at 300', coords: [54.3231, 24.4619], city: 'abudhabi', category: 'Viewpoint' },
+    { name: 'The Galleria Al Maryah', coords: [54.3930, 24.5020], city: 'abudhabi', category: 'Shopping' },
+    { name: 'Abu Dhabi Mall', coords: [54.3830, 24.4960], city: 'abudhabi', category: 'Shopping' },
+    { name: 'CLYMB Abu Dhabi', coords: [54.6050, 24.4900], city: 'abudhabi', category: 'Activity' },
+    { name: 'Yas Beach', coords: [54.5956, 24.4636], city: 'abudhabi', category: 'Beach' },
+    { name: 'SeaWorld Abu Dhabi', coords: [54.5985, 24.4870], city: 'abudhabi', category: 'Theme Park' },
+
+    // Dubai
+    { name: 'Burj Khalifa', coords: [55.2744, 25.1972], city: 'dubai', category: 'Landmark' },
+    { name: 'Dubai Frame', coords: [55.3005, 25.2354], city: 'dubai', category: 'Landmark' },
+    { name: 'Museum of the Future', coords: [55.2820, 25.2195], city: 'dubai', category: 'Museum' },
+    { name: 'Palm Jumeirah', coords: [55.1378, 25.1122], city: 'dubai', category: 'Landmark' },
+    { name: 'Burj Al Arab', coords: [55.1852, 25.1412], city: 'dubai', category: 'Hotel' },
+    { name: 'Atlantis The Palm', coords: [55.1174, 25.1304], city: 'dubai', category: 'Hotel' },
+    { name: 'Dubai Mall', coords: [55.2796, 25.1982], city: 'dubai', category: 'Shopping' },
+    { name: 'Mall of the Emirates', coords: [55.2006, 25.1181], city: 'dubai', category: 'Shopping' },
+    { name: 'Gold Souk', coords: [55.2975, 25.2867], city: 'dubai', category: 'Shopping' },
+    { name: 'JBR Beach', coords: [55.1400, 25.0820], city: 'dubai', category: 'Beach' },
+    { name: 'Kite Beach', coords: [55.1700, 25.1500], city: 'dubai', category: 'Beach' },
+    { name: 'La Mer Beach', coords: [55.2550, 25.2300], city: 'dubai', category: 'Beach' },
+    { name: 'Dubai Museum', coords: [55.2975, 25.2633], city: 'dubai', category: 'Museum' },
+    { name: 'Al Fahidi Historical District', coords: [55.3033, 25.2633], city: 'dubai', category: 'Heritage' },
+    { name: 'Jumeirah Mosque', coords: [55.2375, 25.2325], city: 'dubai', category: 'Mosque' },
+    { name: 'IMG Worlds of Adventure', coords: [55.3047, 25.0486], city: 'dubai', category: 'Theme Park' },
+    { name: 'Aquaventure Waterpark', coords: [55.1175, 25.1305], city: 'dubai', category: 'Water Park' },
+    { name: 'Wild Wadi Water Park', coords: [55.1856, 25.1405], city: 'dubai', category: 'Water Park' },
+    { name: 'Ski Dubai', coords: [55.1979, 25.1176], city: 'dubai', category: 'Activity' },
+    { name: 'Dubai Miracle Garden', coords: [55.2447, 25.0594], city: 'dubai', category: 'Nature' },
+    { name: 'Dubai Butterfly Garden', coords: [55.2445, 25.0590], city: 'dubai', category: 'Nature' },
+    { name: 'Global Village', coords: [55.3050, 25.0722], city: 'dubai', category: 'Theme Park' },
+    { name: 'Zabeel Park', coords: [55.2950, 25.2250], city: 'dubai', category: 'Park' },
+    { name: 'At The Top Burj Khalifa', coords: [55.2744, 25.1975], city: 'dubai', category: 'Viewpoint' },
+    { name: 'The View at The Palm', coords: [55.1380, 25.1125], city: 'dubai', category: 'Viewpoint' },
+    { name: 'Dubai Marina', coords: [55.1400, 25.0800], city: 'dubai', category: 'Landmark' },
+    { name: 'Etihad Museum', coords: [55.2685, 25.2525], city: 'dubai', category: 'Museum' },
+    { name: 'At.mosphere Restaurant', coords: [55.2745, 25.1970], city: 'dubai', category: 'Restaurant' },
+
+    // Sharjah
+    { name: 'Sharjah Museum of Islamic Civilization', coords: [55.3900, 25.3617], city: 'sharjah', category: 'Museum' },
+    { name: 'Heart of Sharjah', coords: [55.3890, 25.3610], city: 'sharjah', category: 'Heritage' },
+    { name: 'Al Noor Mosque', coords: [55.3885, 25.3550], city: 'sharjah', category: 'Mosque' },
+    { name: 'Sharjah Art Museum', coords: [55.3875, 25.3605], city: 'sharjah', category: 'Museum' },
+    { name: 'Al Majaz Waterfront', coords: [55.3850, 25.3400], city: 'sharjah', category: 'Park' },
+    { name: 'Sharjah Aquarium', coords: [55.3620, 25.3510], city: 'sharjah', category: 'Activity' },
+    { name: 'Al Qasba', coords: [55.3855, 25.3450], city: 'sharjah', category: 'Landmark' },
+    { name: 'Sahara Centre', coords: [55.3940, 25.2920], city: 'sharjah', category: 'Shopping' },
+    { name: 'Mleiha Archaeological Centre', coords: [55.8800, 25.1350], city: 'sharjah', category: 'Heritage' },
+    { name: 'Sharjah Desert Park', coords: [55.6900, 25.2200], city: 'sharjah', category: 'Nature' },
+
+    // Ajman
+    { name: 'Ajman Museum', coords: [55.4350, 25.4130], city: 'ajman', category: 'Museum' },
+    { name: 'Ajman Beach', coords: [55.4450, 25.4050], city: 'ajman', category: 'Beach' },
+    { name: 'City Centre Ajman', coords: [55.4700, 25.3980], city: 'ajman', category: 'Shopping' },
+    { name: 'Al Zorah Nature Reserve', coords: [55.4800, 25.4300], city: 'ajman', category: 'Nature' },
+    { name: 'Ajman Corniche', coords: [55.4400, 25.4200], city: 'ajman', category: 'Beach' },
+
+    // Fujairah
+    { name: 'Al Bidya Mosque', coords: [56.3550, 25.4350], city: 'fujairah', category: 'Mosque' },
+    { name: 'Fujairah Fort', coords: [56.3400, 25.1250], city: 'fujairah', category: 'Heritage' },
+    { name: 'Snoopy Island', coords: [56.3600, 25.4900], city: 'fujairah', category: 'Beach' },
+    { name: 'Al Aqah Beach', coords: [56.3650, 25.4850], city: 'fujairah', category: 'Beach' },
+    { name: 'Fujairah Museum', coords: [56.3420, 25.1280], city: 'fujairah', category: 'Museum' },
+    { name: 'Wadi Wurayah', coords: [56.2500, 25.4000], city: 'fujairah', category: 'Nature' },
+    { name: 'Dibba Al Fujairah', coords: [56.2650, 25.6150], city: 'fujairah', category: 'Beach' },
+
+    // Ras Al Khaimah
+    { name: 'Jebel Jais', coords: [56.0800, 25.9500], city: 'rak', category: 'Nature' },
+    { name: 'Jais Adventure Park', coords: [56.0750, 25.9480], city: 'rak', category: 'Activity' },
+    { name: 'RAK National Museum', coords: [55.9450, 25.7850], city: 'rak', category: 'Museum' },
+    { name: 'Dhayah Fort', coords: [56.0550, 25.8350], city: 'rak', category: 'Heritage' },
+    { name: 'Al Marjan Island', coords: [55.8250, 25.7700], city: 'rak', category: 'Beach' },
+    { name: 'Iceland Water Park', coords: [55.9350, 25.7680], city: 'rak', category: 'Water Park' },
+    { name: 'Manar Mall', coords: [55.9400, 25.7750], city: 'rak', category: 'Shopping' },
+
+    // Umm Al Quwain
+    { name: 'Dreamland Aqua Park', coords: [55.5700, 25.5400], city: 'uaq', category: 'Water Park' },
+    { name: 'UAQ Fort', coords: [55.5500, 25.5650], city: 'uaq', category: 'Heritage' },
+    { name: 'UAQ Beach', coords: [55.5450, 25.5600], city: 'uaq', category: 'Beach' },
+    { name: 'Al Sinniyah Island', coords: [55.5800, 25.5750], city: 'uaq', category: 'Nature' },
+    { name: 'UAQ Marine Club', coords: [55.5550, 25.5550], city: 'uaq', category: 'Activity' }
+  ];
+
+  const markers = {};
+  const activePlaces = new Set(places.map((_, i) => i));
+  const expandedCities = new Set();
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.8, 24.8],
+    zoom: 7
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  // Add style switcher control
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      map.setStyle(to.styleUrl);
+      map.once('style.load', () => {
+        setEnglishLabels();
+        Object.entries(markers).forEach(([i, { marker }]) => {
+          if (activePlaces.has(parseInt(i))) marker.addTo(map);
+        });
+      });
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  function buildCityUI() {
+    const list = document.getElementById('cityList');
+    list.innerHTML = cities.map(city => {
+      const cityPlaces = places.filter(p => p.city === city.id);
+      const placeIndices = places.map((p, i) => p.city === city.id ? i : -1).filter(i => i !== -1);
+
+      return `
+        <div class="city-section" id="city-section-${city.id}">
+          <div class="city-header" onclick="toggleCityExpand('${city.id}')">
+            <input type="checkbox" id="city-${city.id}" checked
+              onclick="event.stopPropagation(); toggleCity('${city.id}')">
+            <div class="city-icon" style="background: ${city.color};">${city.icon}</div>
+            <span class="city-name">${city.name}</span>
+            <span class="city-count">${cityPlaces.length}</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="places-list">
+            ${cityPlaces.map((place, i) => {
+              const placeIndex = placeIndices[i];
+              const icon = categoryIcons[place.category] || '📍';
+              return `
+                <div class="place-item" onclick="togglePlaceCheckbox(${placeIndex})">
+                  <input type="checkbox" id="place-${placeIndex}" checked
+                    onclick="event.stopPropagation(); togglePlace(${placeIndex})">
+                  <span class="place-icon">${icon}</span>
+                  <div class="place-info">
+                    <div class="place-name">${place.name}</div>
+                    <div class="place-category">${place.category}</div>
+                  </div>
+                  <button class="place-fly" onclick="event.stopPropagation(); flyToPlace(${placeIndex})">Fly</button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('totalCount').textContent = places.length;
+    updateVisibleCount();
+  }
+
+  function createMarkers() {
+    places.forEach((place, i) => {
+      const city = cities.find(c => c.id === place.city);
+      const icon = categoryIcons[place.category] || '📍';
+
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: 32px;
+        height: 32px;
+        background: ${city.color};
+        border: 2px solid white;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        transition: transform 0.2s;
+      `;
+      el.textContent = icon;
+      el.onmouseenter = () => el.style.transform = 'scale(1.2)';
+      el.onmouseleave = () => el.style.transform = 'scale(1)';
+
+      const marker = new maplibregl.Marker(el)
+        .setLngLat(place.coords)
+        .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(
+          `<strong>${place.name}</strong><br>
+           <small style="color:#666">${city.name} • ${place.category}</small>`
+        ))
+        .addTo(map);
+
+      markers[i] = { marker, data: place, element: el };
+    });
+  }
+
+  function toggleCityExpand(cityId) {
+    const section = document.getElementById('city-section-' + cityId);
+    if (expandedCities.has(cityId)) {
+      expandedCities.delete(cityId);
+      section.classList.remove('expanded');
+    } else {
+      expandedCities.add(cityId);
+      section.classList.add('expanded');
+    }
+  }
+
+  function toggleCity(cityId) {
+    const checkbox = document.getElementById('city-' + cityId);
+    const isActive = checkbox.checked;
+
+    places.forEach((place, i) => {
+      if (place.city === cityId) {
+        if (isActive) {
+          activePlaces.add(i);
+        } else {
+          activePlaces.delete(i);
+        }
+        const placeCheckbox = document.getElementById('place-' + i);
+        if (placeCheckbox) placeCheckbox.checked = isActive;
+      }
+    });
+
+    updateMarkers();
+  }
+
+  function togglePlaceCheckbox(placeIndex) {
+    const checkbox = document.getElementById('place-' + placeIndex);
+    checkbox.checked = !checkbox.checked;
+    togglePlace(placeIndex);
+  }
+
+  function togglePlace(placeIndex) {
+    const checkbox = document.getElementById('place-' + placeIndex);
+    const isActive = checkbox.checked;
+
+    if (isActive) {
+      activePlaces.add(placeIndex);
+    } else {
+      activePlaces.delete(placeIndex);
+    }
+
+    // Update city checkbox state
+    const place = places[placeIndex];
+    const cityPlaceIndices = places.map((p, i) => p.city === place.city ? i : -1).filter(i => i !== -1);
+    const activeCount = cityPlaceIndices.filter(i => activePlaces.has(i)).length;
+    const totalCount = cityPlaceIndices.length;
+
+    const cityCheckbox = document.getElementById('city-' + place.city);
+    cityCheckbox.checked = activeCount > 0;
+    cityCheckbox.indeterminate = activeCount > 0 && activeCount < totalCount;
+
+    updateMarkers();
+  }
+
+  function flyToPlace(placeIndex) {
+    const place = places[placeIndex];
+    map.flyTo({
+      center: place.coords,
+      zoom: 16,
+      pitch: 45,
+      duration: 1500
+    });
+
+    // Open popup
+    setTimeout(() => {
+      markers[placeIndex].marker.togglePopup();
+    }, 1600);
+  }
+
+  function updateMarkers() {
+    Object.entries(markers).forEach(([i, { marker }]) => {
+      if (activePlaces.has(parseInt(i))) {
+        marker.addTo(map);
+      } else {
+        marker.remove();
+      }
+    });
+    updateVisibleCount();
+  }
+
+  function updateVisibleCount() {
+    document.getElementById('visibleCount').textContent = activePlaces.size;
+  }
+
+  function selectAll() {
+    places.forEach((_, i) => {
+      activePlaces.add(i);
+      const checkbox = document.getElementById('place-' + i);
+      if (checkbox) checkbox.checked = true;
+    });
+    cities.forEach(city => {
+      const checkbox = document.getElementById('city-' + city.id);
+      checkbox.checked = true;
+      checkbox.indeterminate = false;
+    });
+    updateMarkers();
+  }
+
+  function selectNone() {
+    activePlaces.clear();
+    places.forEach((_, i) => {
+      const checkbox = document.getElementById('place-' + i);
+      if (checkbox) checkbox.checked = false;
+    });
+    cities.forEach(city => {
+      const checkbox = document.getElementById('city-' + city.id);
+      checkbox.checked = false;
+      checkbox.indeterminate = false;
+    });
+    updateMarkers();
+  }
+
+  function collapseAll() {
+    cities.forEach(city => {
+      expandedCities.delete(city.id);
+      document.getElementById('city-section-' + city.id).classList.remove('expanded');
+    });
+  }
+
+  map.on('load', () => {
+    buildCityUI();
+    createMarkers();
+    setEnglishLabels();
+  });
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>

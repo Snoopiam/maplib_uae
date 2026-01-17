@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map Compare - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
+
+    .compare-container {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+    }
+
+    #before-map, #after-map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #before-map {
+      z-index: 1;
+    }
+
+    #after-map {
+      z-index: 0;
+    }
+
+    .compare-slider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: #3182ce;
+      cursor: ew-resize;
+      z-index: 10;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .compare-slider::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      background: white;
+      border: 3px solid #3182ce;
+      border-radius: 50%;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    .compare-slider::after {
+      content: '⇔';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      color: #3182ce;
+      font-weight: bold;
+    }
+
+    .map-label {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .map-label.left {
+      left: 20px;
+    }
+
+    .map-label.right {
+      right: 20px;
+    }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 280px;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .style-select {
+      margin-bottom: 15px;
+    }
+    .style-select label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    .style-select select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .slider-control {
+      margin-bottom: 15px;
+    }
+    .slider-control label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .slider-control input[type="range"] {
+      width: 100%;
+    }
+
+    .info-box {
+      background: #f7fafc;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      color: #4a5568;
+    }
+    .info-box .label-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .info-box .left-label { color: #3182ce; font-weight: 600; }
+    .info-box .right-label { color: #805ad5; font-weight: 600; }
+    .info-box .hint { color: #718096; font-style: italic; margin-top: 8px; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .reset-btn {
+      width: 100%;
+      padding: 10px;
+      background: #3182ce;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .reset-btn:hover {
+      background: #2c5282;
+    }
+  </style>
+</head>
+<body>
+
+<div class="compare-container">
+  <div id="after-map"></div>
+  <div id="before-map"></div>
+  <div class="compare-slider" id="slider"></div>
+  <div class="map-label left" id="leftLabel">Voyager</div>
+  <div class="map-label right" id="rightLabel">Positron</div>
+</div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>Map Compare</h3>
+  <p>Drag slider to compare two map styles</p>
+
+  <div class="style-select">
+    <label>Left Side</label>
+    <select id="beforeStyle" onchange="changeBeforeStyle(this.value)">
+      <option value="voyager" selected>Voyager (Streets)</option>
+      <option value="positron">Positron (Light)</option>
+      <option value="dark">Dark Matter</option>
+    </select>
+  </div>
+
+  <div class="style-select">
+    <label>Right Side</label>
+    <select id="afterStyle" onchange="changeAfterStyle(this.value)">
+      <option value="positron" selected>Positron (Light)</option>
+      <option value="voyager">Voyager (Streets)</option>
+      <option value="dark">Dark Matter</option>
+    </select>
+  </div>
+
+  <div class="slider-control">
+    <label>Slider Position: <span id="posValue">50%</span></label>
+    <input type="range" id="posRange" min="10" max="90" value="50" oninput="setSliderPosition(this.value)">
+  </div>
+
+  <button class="reset-btn" onclick="resetView()">Reset to Center</button>
+
+  <div class="info-box">
+    <div class="label-row">
+      <span class="left-label" id="infoLeft">LEFT: Voyager</span>
+      <span class="right-label" id="infoRight">RIGHT: Positron</span>
+    </div>
+    <div class="hint">Drag the slider or use controls above. Both maps stay synchronized.</div>
+  </div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  const styleNames = {
+    voyager: 'Voyager (Streets)',
+    positron: 'Positron (Light)',
+    dark: 'Dark Matter'
+  };
+
+  function setEnglishLabels(mapInstance) {
+    const style = mapInstance.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { mapInstance.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  let sliderPosition = 50;
+
+  // Create before map (left side - clipped)
+  const beforeMap = new maplibregl.Map({
+    container: 'before-map',
+    style: mapStyles.voyager,
+    center: [55.2708, 25.2048],
+    zoom: 11
+  });
+
+  // Create after map (right side - full, behind)
+  const afterMap = new maplibregl.Map({
+    container: 'after-map',
+    style: mapStyles.positron,
+    center: [55.2708, 25.2048],
+    zoom: 11
+  });
+
+  // Add controls to after map
+  afterMap.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+  // Sync maps
+  function syncMaps(source, target) {
+    target.setCenter(source.getCenter());
+    target.setZoom(source.getZoom());
+    target.setBearing(source.getBearing());
+    target.setPitch(source.getPitch());
+  }
+
+  beforeMap.on('move', () => syncMaps(beforeMap, afterMap));
+  afterMap.on('move', () => syncMaps(afterMap, beforeMap));
+
+  // Slider functionality
+  const slider = document.getElementById('slider');
+  const beforeMapEl = document.getElementById('before-map');
+  let isDragging = false;
+
+  function updateClip(percent) {
+    sliderPosition = percent;
+    const containerWidth = document.querySelector('.compare-container').offsetWidth;
+    const position = (percent / 100) * containerWidth;
+
+    slider.style.left = percent + '%';
+    beforeMapEl.style.clipPath = `inset(0 ${100 - percent}% 0 0)`;
+
+    document.getElementById('posRange').value = percent;
+    document.getElementById('posValue').textContent = Math.round(percent) + '%';
+  }
+
+  slider.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const container = document.querySelector('.compare-container');
+    const rect = container.getBoundingClientRect();
+    let percent = ((e.clientX - rect.left) / rect.width) * 100;
+    percent = Math.max(10, Math.min(90, percent));
+    updateClip(percent);
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
+
+  // Touch support
+  slider.addEventListener('touchstart', (e) => {
+    isDragging = true;
+    e.preventDefault();
+  });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    const container = document.querySelector('.compare-container');
+    const rect = container.getBoundingClientRect();
+    let percent = ((touch.clientX - rect.left) / rect.width) * 100;
+    percent = Math.max(10, Math.min(90, percent));
+    updateClip(percent);
+  });
+
+  document.addEventListener('touchend', () => {
+    isDragging = false;
+  });
+
+  function setSliderPosition(value) {
+    updateClip(parseFloat(value));
+  }
+
+  function resetView() {
+    updateClip(50);
+    beforeMap.flyTo({ center: [55.2708, 25.2048], zoom: 11 });
+  }
+
+  function changeBeforeStyle(styleName) {
+    beforeMap.setStyle(mapStyles[styleName]);
+    document.getElementById('leftLabel').textContent = styleNames[styleName];
+    document.getElementById('infoLeft').textContent = 'LEFT: ' + styleNames[styleName];
+  }
+
+  function changeAfterStyle(styleName) {
+    afterMap.setStyle(mapStyles[styleName]);
+    document.getElementById('rightLabel').textContent = styleNames[styleName];
+    document.getElementById('infoRight').textContent = 'RIGHT: ' + styleNames[styleName];
+  }
+
+  // Initialize clip and set English labels
+  beforeMap.on('load', () => {
+    updateClip(50);
+    setEnglishLabels(beforeMap);
+  });
+
+  afterMap.on('load', () => {
+    setEnglishLabels(afterMap);
+  });
+
+  // Re-apply English labels after style change
+  beforeMap.on('style.load', () => setEnglishLabels(beforeMap));
+  afterMap.on('style.load', () => setEnglishLabels(afterMap));
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+    updateClip(sliderPosition);
+  });
+</script>
+</body>
+</html>

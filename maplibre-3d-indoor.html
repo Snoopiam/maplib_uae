@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Indoor Map - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 320px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel .subtitle { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .building-selector {
+      margin-bottom: 15px;
+    }
+    .building-selector label { font-size: 12px; color: #666; display: block; margin-bottom: 5px; }
+    .building-selector select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .view-mode {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .view-btn {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 11px;
+      transition: all 0.2s;
+    }
+    .view-btn:hover { border-color: #3182ce; }
+    .view-btn.active { background: #3182ce; color: white; border-color: #3182ce; }
+
+    .floor-selector {
+      margin-bottom: 15px;
+    }
+    .floor-selector label { font-size: 12px; color: #666; display: block; margin-bottom: 8px; }
+    .floor-btns {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .floor-btn {
+      flex: 1;
+      min-width: 45px;
+      padding: 10px 6px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 11px;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .floor-btn:hover { border-color: #3182ce; background: #ebf8ff; }
+    .floor-btn.active { background: #3182ce; color: white; border-color: #3182ce; }
+
+    .control-row {
+      margin-bottom: 15px;
+    }
+    .control-row label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .control-row .value { float: right; font-weight: 600; color: #1a365d; }
+    .control-row input[type="range"] { width: 100%; }
+    .control-row input[type="checkbox"] { margin-right: 8px; }
+
+    .stats-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .stat-box {
+      flex: 1;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 12px;
+      border-radius: 10px;
+      text-align: center;
+      color: white;
+    }
+    .stat-box .value { font-size: 22px; font-weight: 700; }
+    .stat-box .label { font-size: 9px; text-transform: uppercase; opacity: 0.9; }
+
+    .legend {
+      padding: 15px;
+      background: #f7fafc;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .legend h4 { font-size: 11px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: #4a5568;
+    }
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .room-info {
+      padding: 15px;
+      background: linear-gradient(135deg, #ebf8ff 0%, #e6fffa 100%);
+      border-radius: 8px;
+      border-left: 4px solid #3182ce;
+      display: none;
+    }
+    .room-info.visible { display: block; }
+    .room-info h4 { margin: 0 0 8px; color: #1a365d; font-size: 14px; }
+    .room-info p { margin: 0 0 4px; font-size: 12px; color: #4a5568; }
+    .room-info .room-type {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      color: white;
+      margin-top: 5px;
+    }
+
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .quick-btn {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover { border-color: #3182ce; color: #3182ce; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .floor-indicator {
+      position: absolute;
+      bottom: 80px;
+      right: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+      z-index: 1000;
+      text-align: center;
+    }
+    .floor-indicator .current {
+      font-size: 28px;
+      font-weight: 700;
+      color: #3182ce;
+      line-height: 1;
+    }
+    .floor-indicator .label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    /* Scrollbar */
+    .control-panel::-webkit-scrollbar { width: 6px; }
+    .control-panel::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+    .control-panel::-webkit-scrollbar-thumb { background: #c4c4c4; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>3D Indoor Map</h3>
+  <p class="subtitle">Explore UAE building interiors in 3D</p>
+
+  <div class="building-selector">
+    <label>Select Building</label>
+    <select id="buildingSelect" onchange="selectBuilding(this.value)">
+      <option value="mall">Dubai Mall - Fashion Avenue</option>
+      <option value="airport">Dubai Airport - Terminal 3</option>
+      <option value="office">DIFC Office Tower</option>
+      <option value="museum">Louvre Abu Dhabi</option>
+      <option value="hotel">Burj Al Arab</option>
+    </select>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="value" id="floorCount">4</div>
+      <div class="label">Floors</div>
+    </div>
+    <div class="stat-box">
+      <div class="value" id="roomCount">0</div>
+      <div class="label">Spaces</div>
+    </div>
+    <div class="stat-box">
+      <div class="value" id="totalArea">0</div>
+      <div class="label">m² Area</div>
+    </div>
+  </div>
+
+  <div class="view-mode">
+    <button class="view-btn active" id="btn-single" onclick="setViewMode('single')">Single Floor</button>
+    <button class="view-btn" id="btn-stacked" onclick="setViewMode('stacked')">Stacked View</button>
+    <button class="view-btn" id="btn-exploded" onclick="setViewMode('exploded')">Exploded</button>
+  </div>
+
+  <div class="floor-selector">
+    <label>Floor Level</label>
+    <div class="floor-btns" id="floorSelector"></div>
+  </div>
+
+  <div class="quick-actions">
+    <button class="quick-btn" onclick="resetView()">Reset View</button>
+    <button class="quick-btn" onclick="rotateBuilding()">Rotate 90°</button>
+    <button class="quick-btn" onclick="toggleLabels()">Labels</button>
+  </div>
+
+  <div class="control-row">
+    <label>Tilt Angle <span class="value" id="pitchValue">60°</span></label>
+    <input type="range" id="pitchSlider" min="0" max="85" value="60" oninput="updatePitch(this.value)">
+  </div>
+
+  <div class="control-row">
+    <label>Rotation <span class="value" id="bearingValue">-30°</span></label>
+    <input type="range" id="bearingSlider" min="-180" max="180" value="-30" oninput="updateBearing(this.value)">
+  </div>
+
+  <div class="control-row">
+    <label>
+      <input type="checkbox" id="showWalls" checked onchange="toggleWalls()">
+      Show Building Outline
+    </label>
+  </div>
+
+  <div class="legend">
+    <h4>Space Types</h4>
+    <div class="legend-grid" id="legendGrid"></div>
+  </div>
+
+  <div class="room-info" id="roomInfo">
+    <h4 id="roomName">-</h4>
+    <p id="roomDesc">-</p>
+    <p id="roomArea">-</p>
+    <span class="room-type" id="roomType">-</span>
+  </div>
+</div>
+
+<div class="floor-indicator">
+  <div class="current" id="currentFloorDisplay">G</div>
+  <div class="label">Current Floor</div>
+</div>
+
+<script>
+  // Room type colors with better visual hierarchy
+  const roomTypes = {
+    retail: { color: '#4299e1', name: 'Retail', icon: '🛍️' },
+    restaurant: { color: '#48bb78', name: 'Restaurant', icon: '🍽️' },
+    entertainment: { color: '#9f7aea', name: 'Entertainment', icon: '🎭' },
+    services: { color: '#fc8181', name: 'Services', icon: '🔧' },
+    common: { color: '#a0aec0', name: 'Common Area', icon: '🚶' },
+    gate: { color: '#f6ad55', name: 'Gate/Check-in', icon: '✈️' },
+    lounge: { color: '#4fd1c5', name: 'Lounge', icon: '🛋️' },
+    office: { color: '#667eea', name: 'Office', icon: '💼' },
+    meeting: { color: '#ed8936', name: 'Meeting Room', icon: '👥' },
+    reception: { color: '#f687b3', name: 'Reception', icon: '🏛️' },
+    gallery: { color: '#b794f4', name: 'Gallery', icon: '🖼️' },
+    pool: { color: '#63b3ed', name: 'Pool/Spa', icon: '🏊' },
+    suite: { color: '#fbb6ce', name: 'Suite', icon: '🛏️' }
+  };
+
+  // Enhanced building configurations
+  const buildings = {
+    mall: {
+      name: 'Dubai Mall - Fashion Avenue',
+      center: [55.2796, 25.1982],
+      zoom: 18.5,
+      floors: ['LG', 'G', 'L1', 'L2'],
+      defaultFloor: 1,
+      scale: 0.00008,
+      layouts: {
+        0: [
+          { name: 'Parking Access A', type: 'common', x: 0, y: 0, w: 4, h: 2.5 },
+          { name: 'Parking Access B', type: 'common', x: 5, y: 0, w: 3, h: 2 },
+          { name: 'Storage Area', type: 'services', x: -5, y: 0, w: 3, h: 2 },
+          { name: 'Service Corridor', type: 'common', x: 0, y: 3, w: 8, h: 1.5 },
+          { name: 'Loading Bay 1', type: 'services', x: -4, y: 5, w: 2.5, h: 2 },
+          { name: 'Loading Bay 2', type: 'services', x: 4, y: 5, w: 2.5, h: 2 },
+          { name: 'Security Office', type: 'services', x: 0, y: 5, w: 2, h: 2 }
+        ],
+        1: [
+          { name: 'Grand Atrium', type: 'common', x: 0, y: 0, w: 6, h: 5 },
+          { name: 'Louis Vuitton', type: 'retail', x: -6, y: -1, w: 3.5, h: 3 },
+          { name: 'Gucci', type: 'retail', x: -6, y: 3, w: 3.5, h: 3 },
+          { name: 'Dior', type: 'retail', x: 6, y: -1, w: 3.5, h: 3 },
+          { name: 'Chanel', type: 'retail', x: 6, y: 3, w: 3.5, h: 3 },
+          { name: 'Cafe Milano', type: 'restaurant', x: 0, y: 6, w: 3.5, h: 2.5 },
+          { name: 'Patisserie', type: 'restaurant', x: -4, y: 6, w: 2.5, h: 2 },
+          { name: 'Info Desk', type: 'services', x: 0, y: -4, w: 2.5, h: 2 },
+          { name: 'Valet Station', type: 'services', x: -4, y: -4, w: 2, h: 1.5 },
+          { name: 'Currency Exchange', type: 'services', x: 4, y: -4, w: 2, h: 1.5 }
+        ],
+        2: [
+          { name: 'Fashion Court', type: 'common', x: 0, y: 0, w: 5, h: 4 },
+          { name: 'Prada', type: 'retail', x: -6, y: -1, w: 3, h: 2.5 },
+          { name: 'Versace', type: 'retail', x: -6, y: 2.5, w: 3, h: 2.5 },
+          { name: 'Hermès', type: 'retail', x: 6, y: -1, w: 3, h: 2.5 },
+          { name: 'Cartier', type: 'retail', x: 6, y: 2.5, w: 3, h: 2.5 },
+          { name: 'Bulgari', type: 'retail', x: -3, y: 5, w: 2.5, h: 2 },
+          { name: 'Tiffany & Co', type: 'retail', x: 3, y: 5, w: 2.5, h: 2 },
+          { name: 'The Restaurant', type: 'restaurant', x: 0, y: 8, w: 4, h: 3 },
+          { name: 'VIP Lounge', type: 'lounge', x: -5, y: -4, w: 3, h: 2.5 },
+          { name: 'Restrooms', type: 'services', x: 5, y: -4, w: 2, h: 1.5 }
+        ],
+        3: [
+          { name: 'Sky Lounge', type: 'lounge', x: 0, y: 0, w: 6, h: 5 },
+          { name: 'Rooftop Café', type: 'restaurant', x: -5, y: 0, w: 3.5, h: 3.5 },
+          { name: 'Terrace Bar', type: 'restaurant', x: 5, y: 0, w: 3.5, h: 3.5 },
+          { name: 'Private Dining', type: 'restaurant', x: 0, y: 6, w: 4, h: 2.5 },
+          { name: 'Events Space', type: 'entertainment', x: -5, y: 5, w: 3.5, h: 3 },
+          { name: 'VIP Services', type: 'services', x: 5, y: 5, w: 3, h: 2.5 },
+          { name: 'Observation Deck', type: 'common', x: 0, y: -4, w: 8, h: 2 }
+        ]
+      }
+    },
+    airport: {
+      name: 'Dubai Airport - Terminal 3',
+      center: [55.3644, 25.2532],
+      zoom: 17.5,
+      floors: ['Arrivals', 'Departures', 'Gates', 'Lounges'],
+      defaultFloor: 1,
+      scale: 0.00012,
+      layouts: {
+        0: [
+          { name: 'Immigration Hall', type: 'gate', x: 0, y: 0, w: 10, h: 5 },
+          { name: 'Baggage Claim A', type: 'services', x: -7, y: 0, w: 5, h: 4 },
+          { name: 'Baggage Claim B', type: 'services', x: 7, y: 0, w: 5, h: 4 },
+          { name: 'Customs', type: 'gate', x: 0, y: 6, w: 8, h: 3 },
+          { name: 'Meeting Point', type: 'common', x: 0, y: 10, w: 5, h: 3 },
+          { name: 'Taxi Desk', type: 'services', x: -6, y: 10, w: 3, h: 2 },
+          { name: 'Hotel Booking', type: 'services', x: 6, y: 10, w: 3, h: 2 },
+          { name: 'Metro Link', type: 'common', x: 0, y: -5, w: 4, h: 2 }
+        ],
+        1: [
+          { name: 'Check-in Hall', type: 'gate', x: 0, y: 0, w: 14, h: 5 },
+          { name: 'Security Screening', type: 'services', x: 0, y: 6, w: 10, h: 4 },
+          { name: 'Duty Free Main', type: 'retail', x: -8, y: 6, w: 5, h: 5 },
+          { name: 'Duty Free Gold', type: 'retail', x: 8, y: 6, w: 5, h: 5 },
+          { name: 'Emirates Lounge', type: 'lounge', x: -8, y: 12, w: 5, h: 4 },
+          { name: 'Food Court', type: 'restaurant', x: 0, y: 12, w: 6, h: 4 },
+          { name: 'Business Lounge', type: 'lounge', x: 8, y: 12, w: 5, h: 4 }
+        ],
+        2: [
+          { name: 'Gate A1', type: 'gate', x: -10, y: 0, w: 4, h: 5 },
+          { name: 'Gate A2', type: 'gate', x: -5, y: 0, w: 4, h: 5 },
+          { name: 'Gate A3', type: 'gate', x: 0, y: 0, w: 4, h: 5 },
+          { name: 'Gate A4', type: 'gate', x: 5, y: 0, w: 4, h: 5 },
+          { name: 'Gate A5', type: 'gate', x: 10, y: 0, w: 4, h: 5 },
+          { name: 'Central Hub', type: 'common', x: 0, y: 6, w: 8, h: 4 },
+          { name: 'Café Express', type: 'restaurant', x: -6, y: 6, w: 3, h: 3 },
+          { name: 'News & Books', type: 'retail', x: 6, y: 6, w: 3, h: 3 },
+          { name: 'Kids Zone', type: 'entertainment', x: 0, y: 11, w: 4, h: 2 }
+        ],
+        3: [
+          { name: 'First Class Lounge', type: 'lounge', x: -6, y: 0, w: 6, h: 5 },
+          { name: 'Business Lounge', type: 'lounge', x: 6, y: 0, w: 6, h: 5 },
+          { name: 'Spa & Wellness', type: 'pool', x: 0, y: 0, w: 5, h: 4 },
+          { name: 'Fine Dining', type: 'restaurant', x: 0, y: 5, w: 5, h: 3 },
+          { name: 'Quiet Zone', type: 'lounge', x: -6, y: 6, w: 4, h: 3 },
+          { name: 'Work Pods', type: 'office', x: 6, y: 6, w: 4, h: 3 }
+        ]
+      }
+    },
+    office: {
+      name: 'DIFC Office Tower',
+      center: [55.2815, 25.2185],
+      zoom: 18.5,
+      floors: ['Lobby', 'F10', 'F20', 'F30', 'F40', 'Penthouse'],
+      defaultFloor: 1,
+      scale: 0.00006,
+      layouts: {
+        0: [
+          { name: 'Main Lobby', type: 'reception', x: 0, y: 0, w: 7, h: 6 },
+          { name: 'Concierge', type: 'services', x: -5, y: 0, w: 2.5, h: 2.5 },
+          { name: 'Security', type: 'services', x: 5, y: 0, w: 2.5, h: 2.5 },
+          { name: 'Elevators', type: 'common', x: 0, y: 5, w: 4, h: 3 },
+          { name: 'Café', type: 'restaurant', x: -5, y: 5, w: 3.5, h: 3 },
+          { name: 'Business Center', type: 'services', x: 5, y: 5, w: 3.5, h: 3 }
+        ],
+        1: [
+          { name: 'Reception', type: 'reception', x: 0, y: 0, w: 4, h: 2.5 },
+          { name: 'Open Office A', type: 'office', x: -5, y: 0, w: 5, h: 5 },
+          { name: 'Open Office B', type: 'office', x: 5, y: 0, w: 5, h: 5 },
+          { name: 'Meeting Room 1', type: 'meeting', x: -5, y: 6, w: 3, h: 2.5 },
+          { name: 'Meeting Room 2', type: 'meeting', x: 5, y: 6, w: 3, h: 2.5 },
+          { name: 'Break Room', type: 'restaurant', x: 0, y: 6, w: 4, h: 2.5 },
+          { name: 'Server Room', type: 'services', x: 0, y: -3, w: 2.5, h: 2 }
+        ],
+        2: [
+          { name: 'Executive Reception', type: 'reception', x: 0, y: 0, w: 5, h: 3 },
+          { name: 'Corner Office A', type: 'office', x: -6, y: 0, w: 4, h: 4 },
+          { name: 'Corner Office B', type: 'office', x: 6, y: 0, w: 4, h: 4 },
+          { name: 'Board Room', type: 'meeting', x: 0, y: 5, w: 6, h: 4 },
+          { name: 'Private Office 1', type: 'office', x: -6, y: 5, w: 3, h: 2.5 },
+          { name: 'Private Office 2', type: 'office', x: 6, y: 5, w: 3, h: 2.5 },
+          { name: 'Executive Lounge', type: 'lounge', x: 0, y: -4, w: 5, h: 2.5 }
+        ],
+        3: [
+          { name: 'Partner Office 1', type: 'office', x: -5, y: 0, w: 4, h: 4 },
+          { name: 'Partner Office 2', type: 'office', x: 5, y: 0, w: 4, h: 4 },
+          { name: 'Partner Office 3', type: 'office', x: 0, y: 0, w: 4, h: 4 },
+          { name: 'Conference Suite', type: 'meeting', x: 0, y: 5, w: 7, h: 4 },
+          { name: 'Sky Lounge', type: 'lounge', x: -5, y: 6, w: 3.5, h: 2.5 },
+          { name: 'Private Dining', type: 'restaurant', x: 5, y: 6, w: 3.5, h: 2.5 }
+        ],
+        4: [
+          { name: 'Premium Office A', type: 'office', x: -4, y: 0, w: 4, h: 4 },
+          { name: 'Premium Office B', type: 'office', x: 4, y: 0, w: 4, h: 4 },
+          { name: 'Innovation Lab', type: 'office', x: 0, y: 5, w: 5, h: 3 },
+          { name: 'Collaboration Hub', type: 'meeting', x: -5, y: 5, w: 3, h: 3 },
+          { name: 'Think Tank', type: 'meeting', x: 5, y: 5, w: 3, h: 3 }
+        ],
+        5: [
+          { name: 'CEO Suite', type: 'suite', x: 0, y: 0, w: 7, h: 6 },
+          { name: 'Private Terrace', type: 'common', x: 0, y: 7, w: 10, h: 4 },
+          { name: 'Private Meeting', type: 'meeting', x: -6, y: 0, w: 4, h: 4 },
+          { name: 'Executive Dining', type: 'restaurant', x: 6, y: 0, w: 4, h: 4 },
+          { name: 'Helipad Access', type: 'services', x: 0, y: -4, w: 4, h: 2.5 }
+        ]
+      }
+    },
+    museum: {
+      name: 'Louvre Abu Dhabi',
+      center: [54.3983, 24.5339],
+      zoom: 18,
+      floors: ['Plaza', 'Main', 'Upper', 'Dome'],
+      defaultFloor: 1,
+      scale: 0.00015,
+      layouts: {
+        0: [
+          { name: 'Entry Plaza', type: 'common', x: 0, y: 0, w: 12, h: 8 },
+          { name: 'Ticket Office', type: 'services', x: -8, y: 0, w: 4, h: 3 },
+          { name: 'Gift Shop', type: 'retail', x: 8, y: 0, w: 4, h: 3 },
+          { name: 'Café Terrace', type: 'restaurant', x: 0, y: 6, w: 6, h: 3 },
+          { name: 'Coat Check', type: 'services', x: -6, y: 6, w: 3, h: 2 }
+        ],
+        1: [
+          { name: 'Grand Vestibule', type: 'common', x: 0, y: 0, w: 10, h: 8 },
+          { name: 'Ancient Civilizations', type: 'gallery', x: -10, y: -2, w: 6, h: 8 },
+          { name: 'Medieval Art', type: 'gallery', x: 10, y: -2, w: 6, h: 8 },
+          { name: 'Asian Art', type: 'gallery', x: -8, y: 8, w: 5, h: 5 },
+          { name: 'Islamic Art', type: 'gallery', x: 8, y: 8, w: 5, h: 5 },
+          { name: 'Renaissance Gallery', type: 'gallery', x: 0, y: 10, w: 6, h: 4 },
+          { name: 'Museum Café', type: 'restaurant', x: 0, y: -8, w: 5, h: 3 }
+        ],
+        2: [
+          { name: 'Modern Art', type: 'gallery', x: -6, y: 0, w: 6, h: 6 },
+          { name: 'Contemporary Wing', type: 'gallery', x: 6, y: 0, w: 6, h: 6 },
+          { name: 'Photography', type: 'gallery', x: 0, y: 0, w: 5, h: 5 },
+          { name: 'Temporary Exhibition', type: 'gallery', x: 0, y: 7, w: 8, h: 5 },
+          { name: 'Sculpture Garden', type: 'common', x: -8, y: 7, w: 5, h: 4 },
+          { name: 'Media Room', type: 'entertainment', x: 8, y: 7, w: 4, h: 3 }
+        ],
+        3: [
+          { name: 'Dome Viewing', type: 'common', x: 0, y: 0, w: 14, h: 12 },
+          { name: 'Rain of Light Experience', type: 'entertainment', x: 0, y: 8, w: 8, h: 4 },
+          { name: 'VIP Lounge', type: 'lounge', x: -8, y: 0, w: 5, h: 4 },
+          { name: 'Events Terrace', type: 'common', x: 8, y: 0, w: 5, h: 4 }
+        ]
+      }
+    },
+    hotel: {
+      name: 'Burj Al Arab',
+      center: [55.1852, 25.1412],
+      zoom: 18,
+      floors: ['Lobby', 'F10', 'F20', 'Sky', 'Helipad'],
+      defaultFloor: 0,
+      scale: 0.00008,
+      layouts: {
+        0: [
+          { name: 'Grand Atrium', type: 'reception', x: 0, y: 0, w: 8, h: 10 },
+          { name: 'Concierge', type: 'services', x: -6, y: 0, w: 3, h: 3 },
+          { name: 'VIP Check-in', type: 'reception', x: 6, y: 0, w: 3, h: 3 },
+          { name: 'Al Mahara Restaurant', type: 'restaurant', x: -5, y: 6, w: 4, h: 4 },
+          { name: 'Sahn Eddar Lounge', type: 'lounge', x: 5, y: 6, w: 4, h: 4 },
+          { name: 'Boutique', type: 'retail', x: 0, y: -5, w: 3, h: 2.5 }
+        ],
+        1: [
+          { name: 'Duplex Suite 1001', type: 'suite', x: -5, y: 0, w: 5, h: 5 },
+          { name: 'Duplex Suite 1002', type: 'suite', x: 5, y: 0, w: 5, h: 5 },
+          { name: 'Royal Suite', type: 'suite', x: 0, y: 6, w: 6, h: 5 },
+          { name: 'Butler Station', type: 'services', x: 0, y: 0, w: 3, h: 2 },
+          { name: 'Spa Treatment', type: 'pool', x: -5, y: 6, w: 3, h: 3 }
+        ],
+        2: [
+          { name: 'Presidential Suite', type: 'suite', x: 0, y: 0, w: 8, h: 7 },
+          { name: 'Private Pool', type: 'pool', x: 0, y: 8, w: 6, h: 4 },
+          { name: 'Private Cinema', type: 'entertainment', x: -6, y: 0, w: 4, h: 4 },
+          { name: 'Private Gym', type: 'pool', x: 6, y: 0, w: 4, h: 4 }
+        ],
+        3: [
+          { name: 'Al Muntaha Restaurant', type: 'restaurant', x: 0, y: 0, w: 10, h: 8 },
+          { name: 'Skyview Bar', type: 'lounge', x: 0, y: 9, w: 8, h: 4 },
+          { name: 'Private Dining', type: 'restaurant', x: -7, y: 0, w: 4, h: 4 },
+          { name: 'Chef\'s Table', type: 'restaurant', x: 7, y: 0, w: 4, h: 4 }
+        ],
+        4: [
+          { name: 'Helipad', type: 'common', x: 0, y: 0, w: 6, h: 6 },
+          { name: 'VIP Reception', type: 'reception', x: 0, y: 7, w: 4, h: 3 },
+          { name: 'Observation Deck', type: 'common', x: -5, y: 3, w: 3, h: 4 }
+        ]
+      }
+    }
+  };
+
+  let currentBuilding = 'mall';
+  let currentFloor = 1;
+  let viewMode = 'single';
+  let labelsVisible = true;
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    center: buildings.mall.center,
+    zoom: buildings.mall.zoom,
+    pitch: 60,
+    bearing: -30,
+    antialias: true
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  // Build legend
+  function buildLegend() {
+    const grid = document.getElementById('legendGrid');
+    const typesInUse = new Set();
+    const building = buildings[currentBuilding];
+    Object.values(building.layouts).forEach(floor => {
+      floor.forEach(room => typesInUse.add(room.type));
+    });
+
+    grid.innerHTML = Array.from(typesInUse).map(type => `
+      <div class="legend-item">
+        <div class="legend-color" style="background: ${roomTypes[type].color};"></div>
+        ${roomTypes[type].icon} ${roomTypes[type].name}
+      </div>
+    `).join('');
+  }
+
+  // Build floor selector
+  function buildFloorSelector() {
+    const building = buildings[currentBuilding];
+    const selector = document.getElementById('floorSelector');
+    selector.innerHTML = building.floors.map((floor, i) => `
+      <button class="floor-btn ${i === currentFloor ? 'active' : ''}" onclick="setFloor(${i})">${floor}</button>
+    `).join('');
+    document.getElementById('floorCount').textContent = building.floors.length;
+    updateFloorIndicator();
+  }
+
+  function updateFloorIndicator() {
+    const building = buildings[currentBuilding];
+    document.getElementById('currentFloorDisplay').textContent = building.floors[currentFloor];
+  }
+
+  // Generate floor data based on view mode
+  function generateFloorData() {
+    const building = buildings[currentBuilding];
+    const scale = building.scale;
+    const features = [];
+    let totalArea = 0;
+
+    if (viewMode === 'single') {
+      // Single floor view
+      const layout = building.layouts[currentFloor] || [];
+      layout.forEach(room => {
+        const feature = createRoomFeature(room, building, scale, currentFloor, 0);
+        features.push(feature);
+        totalArea += room.w * room.h * 100;
+      });
+    } else if (viewMode === 'stacked') {
+      // Stacked view - show all floors up to current
+      for (let f = 0; f <= currentFloor; f++) {
+        const layout = building.layouts[f] || [];
+        layout.forEach(room => {
+          const feature = createRoomFeature(room, building, scale, f, f * 5);
+          features.push(feature);
+          if (f === currentFloor) totalArea += room.w * room.h * 100;
+        });
+      }
+    } else if (viewMode === 'exploded') {
+      // Exploded view - show all floors with gaps
+      Object.keys(building.layouts).forEach(f => {
+        const floorIndex = parseInt(f);
+        const layout = building.layouts[f];
+        layout.forEach(room => {
+          const feature = createRoomFeature(room, building, scale, floorIndex, floorIndex * 8);
+          features.push(feature);
+        });
+        totalArea += layout.reduce((sum, r) => sum + r.w * r.h * 100, 0);
+      });
+    }
+
+    document.getElementById('roomCount').textContent = features.length;
+    document.getElementById('totalArea').textContent = Math.round(totalArea);
+    return { type: 'FeatureCollection', features };
+  }
+
+  function createRoomFeature(room, building, scale, floorIndex, baseHeight) {
+    const cx = building.center[0] + room.x * scale;
+    const cy = building.center[1] + room.y * scale;
+    const hw = room.w * scale / 2;
+    const hh = room.h * scale / 2;
+
+    return {
+      type: 'Feature',
+      properties: {
+        name: room.name,
+        type: room.type,
+        floor: floorIndex,
+        floorName: building.floors[floorIndex],
+        height: 4 + Math.random() * 0.5,
+        base: baseHeight,
+        area: Math.round(room.w * room.h * 100)
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [cx - hw, cy - hh],
+          [cx + hw, cy - hh],
+          [cx + hw, cy + hh],
+          [cx - hw, cy + hh],
+          [cx - hw, cy - hh]
+        ]]
+      }
+    };
+  }
+
+  // Generate building outline
+  function generateBuildingOutline() {
+    const building = buildings[currentBuilding];
+    const scale = building.scale;
+
+    // Find bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    Object.values(building.layouts).forEach(floor => {
+      floor.forEach(room => {
+        minX = Math.min(minX, room.x - room.w/2);
+        minY = Math.min(minY, room.y - room.h/2);
+        maxX = Math.max(maxX, room.x + room.w/2);
+        maxY = Math.max(maxY, room.y + room.h/2);
+      });
+    });
+
+    // Add padding
+    const pad = 1;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+
+    const cx = building.center[0];
+    const cy = building.center[1];
+
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [cx + minX * scale, cy + minY * scale],
+          [cx + maxX * scale, cy + minY * scale],
+          [cx + maxX * scale, cy + maxY * scale],
+          [cx + minX * scale, cy + maxY * scale],
+          [cx + minX * scale, cy + minY * scale]
+        ]]
+      }
+    };
+  }
+
+  map.on('load', () => {
+    // Building outline
+    map.addSource('building-outline', {
+      type: 'geojson',
+      data: generateBuildingOutline()
+    });
+
+    map.addLayer({
+      id: 'building-outline',
+      type: 'line',
+      source: 'building-outline',
+      paint: {
+        'line-color': '#1a365d',
+        'line-width': 3,
+        'line-dasharray': [4, 2]
+      }
+    });
+
+    // Indoor rooms
+    map.addSource('indoor', {
+      type: 'geojson',
+      data: generateFloorData()
+    });
+
+    map.addLayer({
+      id: 'indoor-3d',
+      type: 'fill-extrusion',
+      source: 'indoor',
+      paint: {
+        'fill-extrusion-color': [
+          'match', ['get', 'type'],
+          ...Object.entries(roomTypes).flatMap(([k, v]) => [k, v.color]),
+          '#888888'
+        ],
+        'fill-extrusion-height': ['get', 'height'],
+        'fill-extrusion-base': ['get', 'base'],
+        'fill-extrusion-opacity': 0.92
+      }
+    });
+
+    map.addLayer({
+      id: 'indoor-labels',
+      type: 'symbol',
+      source: 'indoor',
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 11,
+        'text-anchor': 'center',
+        'text-allow-overlap': false
+      },
+      paint: {
+        'text-color': '#1a365d',
+        'text-halo-color': 'rgba(255,255,255,0.9)',
+        'text-halo-width': 2
+      }
+    });
+
+    buildLegend();
+    buildFloorSelector();
+    setEnglishLabels();
+  });
+
+  map.on('mousemove', 'indoor-3d', (e) => {
+    map.getCanvas().style.cursor = 'pointer';
+    if (e.features.length > 0) {
+      const props = e.features[0].properties;
+      const type = roomTypes[props.type];
+      document.getElementById('roomInfo').classList.add('visible');
+      document.getElementById('roomName').textContent = props.name;
+      document.getElementById('roomDesc').textContent = `Floor: ${props.floorName}`;
+      document.getElementById('roomArea').textContent = `Area: ~${props.area} m²`;
+      document.getElementById('roomType').textContent = `${type?.icon || ''} ${type?.name || props.type}`;
+      document.getElementById('roomType').style.background = type?.color || '#888';
+    }
+  });
+
+  map.on('mouseleave', 'indoor-3d', () => {
+    map.getCanvas().style.cursor = '';
+    document.getElementById('roomInfo').classList.remove('visible');
+  });
+
+  function selectBuilding(buildingId) {
+    currentBuilding = buildingId;
+    const building = buildings[buildingId];
+    currentFloor = building.defaultFloor;
+
+    map.flyTo({
+      center: building.center,
+      zoom: building.zoom,
+      pitch: 60,
+      bearing: -30,
+      duration: 1500
+    });
+
+    buildFloorSelector();
+    buildLegend();
+    updateLayers();
+  }
+
+  function setFloor(floorIndex) {
+    currentFloor = floorIndex;
+    document.querySelectorAll('.floor-btn').forEach((btn, i) => {
+      btn.classList.toggle('active', i === floorIndex);
+    });
+    updateFloorIndicator();
+    updateLayers();
+  }
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('btn-' + mode).classList.add('active');
+    updateLayers();
+  }
+
+  function updateLayers() {
+    map.getSource('indoor').setData(generateFloorData());
+    map.getSource('building-outline').setData(generateBuildingOutline());
+  }
+
+  function updatePitch(value) {
+    map.setPitch(parseInt(value));
+    document.getElementById('pitchValue').textContent = value + '°';
+  }
+
+  function updateBearing(value) {
+    map.setBearing(parseInt(value));
+    document.getElementById('bearingValue').textContent = value + '°';
+  }
+
+  function resetView() {
+    const building = buildings[currentBuilding];
+    map.flyTo({
+      center: building.center,
+      zoom: building.zoom,
+      pitch: 60,
+      bearing: -30,
+      duration: 1000
+    });
+    document.getElementById('pitchSlider').value = 60;
+    document.getElementById('bearingSlider').value = -30;
+    document.getElementById('pitchValue').textContent = '60°';
+    document.getElementById('bearingValue').textContent = '-30°';
+  }
+
+  function rotateBuilding() {
+    const currentBearing = map.getBearing();
+    const newBearing = currentBearing + 90;
+    map.easeTo({ bearing: newBearing, duration: 500 });
+    document.getElementById('bearingSlider').value = newBearing % 360;
+    document.getElementById('bearingValue').textContent = Math.round(newBearing % 360) + '°';
+  }
+
+  function toggleLabels() {
+    labelsVisible = !labelsVisible;
+    map.setLayoutProperty('indoor-labels', 'visibility', labelsVisible ? 'visible' : 'none');
+  }
+
+  function toggleWalls() {
+    const visible = document.getElementById('showWalls').checked;
+    map.setLayoutProperty('building-outline', 'visibility', visible ? 'visible' : 'none');
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>

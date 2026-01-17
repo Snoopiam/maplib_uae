@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Draggable Markers - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .sidebar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      width: 340px;
+      max-height: calc(100vh - 20px);
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 15px 20px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .sidebar-header h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .sidebar-header p { color: #666; font-size: 12px; margin: 0; }
+
+    .controls {
+      padding: 15px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #3182ce; color: white; }
+    .btn-primary:hover { background: #2c5282; }
+    .btn-danger { background: #e53e3e; color: white; }
+    .btn-danger:hover { background: #c53030; }
+    .btn-outline { background: white; border: 2px solid #e2e8f0; color: #666; }
+    .btn-outline:hover { border-color: #3182ce; color: #3182ce; }
+
+    .format-toggle {
+      display: flex;
+      background: #f0f4f8;
+      border-radius: 6px;
+      padding: 3px;
+    }
+    .format-btn {
+      padding: 5px 12px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .format-btn.active { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    .marker-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .marker-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+    }
+    .marker-item:hover { background: #f0f4f8; }
+
+    .marker-color {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      flex-shrink: 0;
+    }
+
+    .marker-info { flex: 1; min-width: 0; }
+    .marker-name { font-weight: 600; color: #1a365d; font-size: 13px; }
+    .marker-coords {
+      font-family: monospace;
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+      cursor: pointer;
+    }
+    .marker-coords:hover { color: #3182ce; }
+
+    .marker-actions { display: flex; gap: 5px; }
+    .marker-actions button {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .btn-copy { background: #e2e8f0; }
+    .btn-copy:hover { background: #cbd5e0; }
+    .btn-delete { background: #fed7d7; color: #c53030; }
+    .btn-delete:hover { background: #feb2b2; }
+
+    .distance-panel {
+      padding: 15px 20px;
+      border-top: 1px solid #e2e8f0;
+      background: #f0f4f8;
+    }
+    .distance-panel h4 { font-size: 12px; color: #666; margin: 0 0 8px; text-transform: uppercase; }
+    .distance-value { font-size: 1.5em; font-weight: 700; color: #1a365d; }
+    .distance-value small { font-size: 0.5em; font-weight: 400; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #666;
+    }
+    .empty-state span { font-size: 3em; display: block; margin-bottom: 10px; }
+
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a365d;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 2000;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h3>Draggable Markers</h3>
+    <p>Add markers, drag them, measure distances</p>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" onclick="addMarker()">+ Add Marker</button>
+    <button class="btn btn-danger" onclick="clearMarkers()">Clear All</button>
+    <div class="format-toggle">
+      <button class="format-btn active" id="decBtn" onclick="setFormat('decimal')">Decimal</button>
+      <button class="format-btn" id="dmsBtn" onclick="setFormat('dms')">DMS</button>
+    </div>
+  </div>
+
+  <div class="marker-list" id="markerList">
+    <div class="empty-state">
+      <span>📍</span>
+      Click "Add Marker" to start
+    </div>
+  </div>
+
+  <div class="distance-panel" id="distancePanel" style="display: none;">
+    <h4>Total Distance</h4>
+    <div class="distance-value" id="distanceValue">0 <small>km</small></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Copied to clipboard!</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  // Style items for the style switcher plugin
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  const markerColors = ['#e53e3e', '#3182ce', '#38a169', '#805ad5', '#d69e2e', '#319795', '#d53f8c', '#2d3748'];
+  let markers = [];
+  let coordFormat = 'decimal';
+  let markerIdCounter = 0;
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.5, 24.4],
+    zoom: 9
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  // Add style switcher control
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      map.setStyle(to.styleUrl);
+      map.once('style.load', () => {
+        setEnglishLabels();
+        updateDistanceLine();
+      });
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  function addMarker() {
+    const center = map.getCenter();
+    const id = ++markerIdCounter;
+    const color = markerColors[(markers.length) % markerColors.length];
+
+    const el = document.createElement('div');
+    el.style.cssText = `
+      width: 30px;
+      height: 30px;
+      background: ${color};
+      border: 3px solid white;
+      border-radius: 50%;
+      cursor: grab;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    `;
+
+    const marker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat([center.lng, center.lat])
+      .addTo(map);
+
+    const markerData = { id, marker, color, name: `Marker ${id}` };
+    markers.push(markerData);
+
+    marker.on('dragend', () => {
+      updateMarkerList();
+      updateDistance();
+      updateDistanceLine();
+    });
+
+    updateMarkerList();
+    updateDistance();
+    updateDistanceLine();
+  }
+
+  function removeMarker(id) {
+    const index = markers.findIndex(m => m.id === id);
+    if (index > -1) {
+      markers[index].marker.remove();
+      markers.splice(index, 1);
+      updateMarkerList();
+      updateDistance();
+      updateDistanceLine();
+    }
+  }
+
+  function clearMarkers() {
+    markers.forEach(m => m.marker.remove());
+    markers = [];
+    updateMarkerList();
+    updateDistance();
+    updateDistanceLine();
+  }
+
+  function formatCoords(lngLat) {
+    if (coordFormat === 'decimal') {
+      return `${lngLat.lng.toFixed(6)}, ${lngLat.lat.toFixed(6)}`;
+    } else {
+      return `${toDMS(lngLat.lat, 'lat')}, ${toDMS(lngLat.lng, 'lng')}`;
+    }
+  }
+
+  function toDMS(coord, type) {
+    const abs = Math.abs(coord);
+    const deg = Math.floor(abs);
+    const min = Math.floor((abs - deg) * 60);
+    const sec = ((abs - deg - min / 60) * 3600).toFixed(1);
+    const dir = type === 'lat' ? (coord >= 0 ? 'N' : 'S') : (coord >= 0 ? 'E' : 'W');
+    return `${deg}°${min}'${sec}"${dir}`;
+  }
+
+  function setFormat(format) {
+    coordFormat = format;
+    document.getElementById('decBtn').classList.toggle('active', format === 'decimal');
+    document.getElementById('dmsBtn').classList.toggle('active', format === 'dms');
+    updateMarkerList();
+  }
+
+  function copyCoords(id) {
+    const markerData = markers.find(m => m.id === id);
+    if (markerData) {
+      const lngLat = markerData.marker.getLngLat();
+      const text = formatCoords(lngLat);
+      navigator.clipboard.writeText(text);
+      showToast('Copied to clipboard!');
+    }
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }
+
+  function updateMarkerList() {
+    const list = document.getElementById('markerList');
+
+    if (markers.length === 0) {
+      list.innerHTML = '<div class="empty-state"><span>📍</span>Click "Add Marker" to start</div>';
+      return;
+    }
+
+    list.innerHTML = markers.map(m => {
+      const lngLat = m.marker.getLngLat();
+      return `
+        <div class="marker-item">
+          <div class="marker-color" style="background: ${m.color};"></div>
+          <div class="marker-info">
+            <div class="marker-name">${m.name}</div>
+            <div class="marker-coords" onclick="copyCoords(${m.id})" title="Click to copy">${formatCoords(lngLat)}</div>
+          </div>
+          <div class="marker-actions">
+            <button class="btn-copy" onclick="copyCoords(${m.id})" title="Copy">📋</button>
+            <button class="btn-delete" onclick="removeMarker(${m.id})" title="Delete">×</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function calculateDistance(p1, p2) {
+    const R = 6371; // Earth radius in km
+    const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+    const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  function updateDistance() {
+    const panel = document.getElementById('distancePanel');
+    const value = document.getElementById('distanceValue');
+
+    if (markers.length < 2) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    panel.style.display = 'block';
+    let total = 0;
+    for (let i = 1; i < markers.length; i++) {
+      const p1 = markers[i - 1].marker.getLngLat();
+      const p2 = markers[i].marker.getLngLat();
+      total += calculateDistance(p1, p2);
+    }
+
+    value.innerHTML = total < 1
+      ? `${(total * 1000).toFixed(0)} <small>m</small>`
+      : `${total.toFixed(2)} <small>km</small>`;
+  }
+
+  function updateDistanceLine() {
+    if (map.getSource('distance-line')) {
+      map.removeLayer('distance-line');
+      map.removeSource('distance-line');
+    }
+
+    if (markers.length < 2) return;
+
+    const coords = markers.map(m => {
+      const ll = m.marker.getLngLat();
+      return [ll.lng, ll.lat];
+    });
+
+    map.addSource('distance-line', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } }
+    });
+
+    map.addLayer({
+      id: 'distance-line',
+      type: 'line',
+      source: 'distance-line',
+      paint: { 'line-color': '#3182ce', 'line-width': 3, 'line-dasharray': [2, 2] }
+    });
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>

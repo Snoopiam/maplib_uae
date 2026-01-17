@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UAE Real Estate Map</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+    
+    .maplibregl-popup-content {
+      padding: 15px;
+      border-radius: 8px;
+      min-width: 200px;
+    }
+    .property-popup h3 { margin: 0 0 8px; color: #1a365d; }
+    .property-popup .price { font-size: 1.2em; font-weight: bold; color: #2d7d46; }
+    .property-popup .details { color: #666; font-size: 0.9em; margin-top: 5px; }
+    .property-popup .type { 
+      display: inline-block; 
+      background: #e2e8f0; 
+      padding: 2px 8px; 
+      border-radius: 4px; 
+      font-size: 0.8em;
+      margin-top: 8px;
+    }
+
+    .legend {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      font-size: 13px;
+      z-index: 1000;
+    }
+    .legend h4 { margin: 0 0 10px; }
+    .legend-item { display: flex; align-items: center; margin: 5px 0; }
+    .legend-color { 
+      width: 12px; 
+      height: 12px; 
+      border-radius: 50%; 
+      margin-right: 8px; 
+    }
+
+    .nav-buttons {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      display: flex;
+      gap: 5px;
+    }
+    .nav-btn {
+      background: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      transition: background 0.2s;
+    }
+    .nav-btn:hover { background: #f0f0f0; }
+    .nav-btn.active { background: #1a365d; color: white; }
+
+    .style-selector {
+      position: absolute;
+      top: 10px;
+      right: 50px;
+      z-index: 1000;
+    }
+    .style-selector select {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="nav-buttons">
+  <button class="nav-btn" onclick="flyTo('uae')">UAE Overview</button>
+  <button class="nav-btn" onclick="flyTo('abudhabi')">Abu Dhabi</button>
+  <button class="nav-btn" onclick="flyTo('dubai')">Dubai</button>
+</div>
+
+<div class="style-selector">
+  <select id="styleSelect" onchange="changeStyle(this.value)">
+    <option value="voyager">Voyager (Detailed)</option>
+    <option value="positron">Positron (Light)</option>
+    <option value="dark">Dark Matter</option>
+    <option value="streets">OSM Streets</option>
+  </select>
+</div>
+
+<div class="legend">
+  <h4>Property Types</h4>
+  <div class="legend-item"><span class="legend-color" style="background: #e53e3e;"></span> Villa</div>
+  <div class="legend-item"><span class="legend-color" style="background: #3182ce;"></span> Apartment</div>
+  <div class="legend-item"><span class="legend-color" style="background: #38a169;"></span> Townhouse</div>
+  <div class="legend-item"><span class="legend-color" style="background: #805ad5;"></span> Penthouse</div>
+  <div class="legend-item"><span class="legend-color" style="background: #d69e2e;"></span> Land</div>
+</div>
+
+<script>
+// Sample property data - replace with your real data
+const properties = [
+  // Abu Dhabi
+  { coords: [54.3773, 24.4539], name: "Corniche Tower Penthouse", price: "AED 8,500,000", beds: 4, baths: 5, sqft: 4200, type: "Penthouse", area: "Corniche" },
+  { coords: [54.4341, 24.4601], name: "Saadiyat Beach Villa", price: "AED 15,200,000", beds: 6, baths: 7, sqft: 8500, type: "Villa", area: "Saadiyat Island" },
+  { coords: [54.4944, 24.4655], name: "Al Reem Island Apartment", price: "AED 1,850,000", beds: 2, baths: 2, sqft: 1350, type: "Apartment", area: "Al Reem Island" },
+  { coords: [54.5013, 24.4178], name: "Yas Island Townhouse", price: "AED 3,200,000", beds: 4, baths: 4, sqft: 2800, type: "Townhouse", area: "Yas Island" },
+  { coords: [54.3651, 24.4988], name: "Al Raha Beach Villa", price: "AED 6,800,000", beds: 5, baths: 6, sqft: 5200, type: "Villa", area: "Al Raha Beach" },
+  
+  // Dubai
+  { coords: [55.1378, 25.0762], name: "Palm Jumeirah Villa", price: "AED 25,000,000", beds: 6, baths: 7, sqft: 10000, type: "Villa", area: "Palm Jumeirah" },
+  { coords: [55.2744, 25.1972], name: "Downtown Burj Khalifa View", price: "AED 4,500,000", beds: 3, baths: 3, sqft: 2100, type: "Apartment", area: "Downtown Dubai" },
+  { coords: [55.1862, 25.0809], name: "Dubai Marina Penthouse", price: "AED 12,000,000", beds: 4, baths: 5, sqft: 5500, type: "Penthouse", area: "Dubai Marina" },
+  { coords: [55.2476, 25.0657], name: "Business Bay Apartment", price: "AED 2,200,000", beds: 2, baths: 2, sqft: 1200, type: "Apartment", area: "Business Bay" },
+  { coords: [55.4254, 25.2385], name: "Arabian Ranches Villa", price: "AED 5,500,000", beds: 5, baths: 5, sqft: 4500, type: "Villa", area: "Arabian Ranches" },
+  { coords: [55.1572, 25.0954], name: "JBR Beachfront Apt", price: "AED 3,800,000", beds: 3, baths: 3, sqft: 1900, type: "Apartment", area: "JBR" },
+  { coords: [55.3046, 25.2486], name: "Dubai Hills Townhouse", price: "AED 4,200,000", beds: 4, baths: 4, sqft: 3200, type: "Townhouse", area: "Dubai Hills" },
+  
+  // Plot
+  { coords: [54.5512, 24.4012], name: "Yas Acres Land Plot", price: "AED 4,000,000", beds: null, baths: null, sqft: 12000, type: "Land", area: "Yas Island" },
+];
+
+const typeColors = {
+  "Villa": "#e53e3e",
+  "Apartment": "#3182ce",
+  "Townhouse": "#38a169",
+  "Penthouse": "#805ad5",
+  "Land": "#d69e2e"
+};
+
+const locations = {
+  uae: { center: [54.5, 24.2], zoom: 7 },
+  abudhabi: { center: [54.45, 24.45], zoom: 11 },
+  dubai: { center: [55.20, 25.15], zoom: 10.5 }
+};
+
+// Map styles
+const mapStyles = {
+  voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+  positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  streets: 'https://tiles.openfreemap.org/styles/bright/style.json'
+};
+
+// Initialize map centered on UAE
+const map = new maplibregl.Map({
+  container: 'map',
+  style: mapStyles.voyager,
+  center: [54.5, 24.2],
+  zoom: 7
+});
+
+// Add navigation controls
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
+
+// Add markers
+map.on('load', () => {
+  properties.forEach(prop => {
+    // Create marker element
+    const el = document.createElement('div');
+    el.className = 'marker';
+    el.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: ${typeColors[prop.type]};
+      border: 3px solid white;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    `;
+
+    // Popup content
+    const popupHTML = `
+      <div class="property-popup">
+        <h3>${prop.name}</h3>
+        <div class="price">${prop.price}</div>
+        <div class="details">
+          ${prop.beds ? `${prop.beds} Beds • ${prop.baths} Baths • ` : ''}${prop.sqft.toLocaleString()} sqft
+        </div>
+        <div class="details">${prop.area}</div>
+        <span class="type">${prop.type}</span>
+      </div>
+    `;
+
+    // Add marker with popup
+    new maplibregl.Marker(el)
+      .setLngLat(prop.coords)
+      .setPopup(new maplibregl.Popup({ offset: 15 }).setHTML(popupHTML))
+      .addTo(map);
+  });
+});
+
+// Navigation function
+function flyTo(location) {
+  const loc = locations[location];
+  map.flyTo({
+    center: loc.center,
+    zoom: loc.zoom,
+    essential: true
+  });
+
+  // Update button states
+  document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+// Store markers for re-adding after style change
+let markers = [];
+
+function addMarkers() {
+  // Remove existing markers
+  markers.forEach(m => m.remove());
+  markers = [];
+
+  properties.forEach(prop => {
+    const el = document.createElement('div');
+    el.className = 'marker';
+    el.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: ${typeColors[prop.type]};
+      border: 3px solid white;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    `;
+
+    const popupHTML = `
+      <div class="property-popup">
+        <h3>${prop.name}</h3>
+        <div class="price">${prop.price}</div>
+        <div class="details">
+          ${prop.beds ? `${prop.beds} Beds • ${prop.baths} Baths • ` : ''}${prop.sqft.toLocaleString()} sqft
+        </div>
+        <div class="details">${prop.area}</div>
+        <span class="type">${prop.type}</span>
+      </div>
+    `;
+
+    const marker = new maplibregl.Marker(el)
+      .setLngLat(prop.coords)
+      .setPopup(new maplibregl.Popup({ offset: 15 }).setHTML(popupHTML))
+      .addTo(map);
+    markers.push(marker);
+  });
+}
+
+// Set English labels on the map
+function setEnglishLabels() {
+  const style = map.getStyle();
+  if (!style || !style.layers) return;
+
+  style.layers.forEach(layer => {
+    if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+      try {
+        map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]);
+      } catch (e) {
+        // Some layers may not support this
+      }
+    }
+  });
+}
+
+// Change map style
+function changeStyle(styleName) {
+  map.setStyle(mapStyles[styleName]);
+  map.once('style.load', () => {
+    setEnglishLabels();
+    addMarkers();
+  });
+}
+
+// Initial style load
+map.on('style.load', () => {
+  setEnglishLabels();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMTiles Source - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/pmtiles@latest/dist/pmtiles.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .info-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      max-width: 350px;
+    }
+    .info-panel h3 { margin: 0 0 10px; color: #1a365d; font-size: 18px; }
+    .info-panel p { color: #666; font-size: 13px; line-height: 1.5; margin-bottom: 15px; }
+
+    .stats {
+      background: #f0f4f8;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+      font-size: 12px;
+    }
+    .stat-row:last-child { margin-bottom: 0; }
+    .stat-label { color: #666; }
+    .stat-value { color: #1a365d; font-weight: 600; font-family: monospace; }
+
+    .layer-controls { margin-top: 15px; }
+    .layer-controls h4 { font-size: 12px; color: #666; margin-bottom: 10px; text-transform: uppercase; }
+
+    .layer-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .layer-toggle:last-child { border-bottom: none; }
+    .layer-toggle input { cursor: pointer; }
+    .layer-toggle label { flex: 1; font-size: 13px; cursor: pointer; }
+    .color-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 30px 50px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      text-align: center;
+      z-index: 2000;
+    }
+    .loading.hidden { display: none; }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #3182ce;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">← Back to Index</a>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div>Loading PMTiles...</div>
+</div>
+
+<div class="info-panel">
+  <h3>PMTiles Source</h3>
+  <p>This example loads vector tiles from a PMTiles archive - a single-file format for hosting tilesets.</p>
+
+  <div class="stats">
+    <div class="stat-row">
+      <span class="stat-label">Format</span>
+      <span class="stat-value">PMTiles v3</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Source</span>
+      <span class="stat-value" id="sourceName">Loading...</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Zoom Range</span>
+      <span class="stat-value" id="zoomRange">-</span>
+    </div>
+  </div>
+
+  <div class="layer-controls">
+    <h4>Toggle Layers</h4>
+    <div class="layer-toggle">
+      <input type="checkbox" id="landuseToggle" checked onchange="toggleLayer('landuse', this.checked)">
+      <label for="landuseToggle">Land Use</label>
+      <div class="color-dot" style="background: steelblue;"></div>
+    </div>
+    <div class="layer-toggle">
+      <input type="checkbox" id="roadsToggle" checked onchange="toggleLayer('roads', this.checked)">
+      <label for="roadsToggle">Roads</label>
+      <div class="color-dot" style="background: #333;"></div>
+    </div>
+    <div class="layer-toggle">
+      <input type="checkbox" id="boundaryToggle" checked onchange="toggleLayer('boundary', this.checked)">
+      <label for="boundaryToggle">Boundaries</label>
+      <div class="color-dot" style="background: #e53e3e;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Initialize PMTiles protocol
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', protocol.tile);
+
+  const PMTILES_URL = 'https://pmtiles.io/protomaps(vector)ODbL_firenze.pmtiles';
+
+  const p = new pmtiles.PMTiles(PMTILES_URL);
+  protocol.add(p);
+
+  p.getHeader().then(h => {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('sourceName').textContent = 'Firenze (Florence)';
+    document.getElementById('zoomRange').textContent = `${h.minZoom} - ${h.maxZoom}`;
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      zoom: h.maxZoom - 2,
+      center: [h.centerLon, h.centerLat],
+      style: {
+        version: 8,
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+        sources: {
+          pmtiles_source: {
+            type: 'vector',
+            url: `pmtiles://${PMTILES_URL}`,
+            attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          }
+        },
+        layers: [
+          {
+            id: 'background',
+            type: 'background',
+            paint: { 'background-color': '#f8f4f0' }
+          },
+          {
+            id: 'landuse',
+            source: 'pmtiles_source',
+            'source-layer': 'landuse',
+            type: 'fill',
+            paint: {
+              'fill-color': 'steelblue',
+              'fill-opacity': 0.7
+            }
+          },
+          {
+            id: 'boundary',
+            source: 'pmtiles_source',
+            'source-layer': 'places',
+            type: 'circle',
+            paint: {
+              'circle-color': '#e53e3e',
+              'circle-radius': 5,
+              'circle-stroke-color': 'white',
+              'circle-stroke-width': 2
+            }
+          },
+          {
+            id: 'roads',
+            source: 'pmtiles_source',
+            'source-layer': 'roads',
+            type: 'line',
+            paint: {
+              'line-color': '#333',
+              'line-width': 1.5
+            }
+          }
+        ]
+      }
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+    // Make map accessible for layer toggling
+    window.mapInstance = map;
+  }).catch(err => {
+    document.getElementById('loading').innerHTML = `
+      <div style="color: #e53e3e;">Error loading PMTiles</div>
+      <div style="font-size: 12px; color: #666; margin-top: 10px;">${err.message}</div>
+    `;
+  });
+
+  function toggleLayer(layerId, visible) {
+    if (window.mapInstance) {
+      window.mapInstance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+    }
+  }
+</script>
+</body>
+</html>

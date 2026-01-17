@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimap - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .minimap-container {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      z-index: 1000;
+    }
+
+    .minimap-wrapper {
+      background: white;
+      padding: 4px;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    #minimap {
+      width: 200px;
+      height: 150px;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .minimap-label {
+      font-size: 10px;
+      color: #666;
+      text-align: center;
+      padding: 4px 0 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .minimap-toggle {
+      position: absolute;
+      top: -30px;
+      right: 0;
+      background: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 260px;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .control-row {
+      margin-bottom: 15px;
+    }
+    .control-row label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .control-row .value { float: right; font-weight: 600; color: #1a365d; }
+    .control-row input[type="range"] { width: 100%; }
+    .control-row select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .position-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 15px;
+    }
+    .position-btn {
+      padding: 10px 5px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      transition: all 0.2s;
+    }
+    .position-btn:hover { border-color: #3182ce; }
+    .position-btn.active { background: #3182ce; color: white; border-color: #3182ce; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .toggle-row input { cursor: pointer; }
+    .toggle-row label { font-size: 13px; cursor: pointer; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    /* Viewport indicator on minimap */
+    .viewport-indicator {
+      position: absolute;
+      border: 2px solid #e53e3e;
+      background: rgba(229, 62, 62, 0.15);
+      pointer-events: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>Minimap Control</h3>
+  <p>Overview map showing your current position</p>
+
+  <div class="control-row">
+    <label>Minimap Style</label>
+    <select id="minimapStyle" onchange="changeMinimapStyle(this.value)">
+      <option value="positron">Positron (Light)</option>
+      <option value="dark">Dark Matter</option>
+      <option value="voyager">Voyager</option>
+      <option value="satellite">Satellite</option>
+    </select>
+  </div>
+
+  <div class="control-row">
+    <label>Zoom Offset <span class="value" id="zoomValue">-4</span></label>
+    <input type="range" id="zoomOffset" min="-6" max="-2" value="-4" oninput="updateZoomOffset(this.value)">
+  </div>
+
+  <div class="control-row">
+    <label>Minimap Size <span class="value" id="sizeValue">200px</span></label>
+    <input type="range" id="minimapSize" min="120" max="300" value="200" oninput="updateMinimapSize(this.value)">
+  </div>
+
+  <div class="control-row">
+    <label>Position</label>
+  </div>
+  <div class="position-grid">
+    <button class="position-btn" onclick="setPosition('top-left')">Top Left</button>
+    <button class="position-btn" onclick="setPosition('top-center')">Top</button>
+    <button class="position-btn" onclick="setPosition('top-right')">Top Right</button>
+    <button class="position-btn active" onclick="setPosition('bottom-left')">Bot Left</button>
+    <button class="position-btn" onclick="setPosition('bottom-center')">Bottom</button>
+    <button class="position-btn" onclick="setPosition('bottom-right')">Bot Right</button>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="showViewport" checked onchange="toggleViewport()">
+    <label for="showViewport">Show viewport indicator</label>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="showMinimap" checked onchange="toggleMinimap()">
+    <label for="showMinimap">Show minimap</label>
+  </div>
+</div>
+
+<div class="minimap-container" id="minimapContainer">
+  <div class="minimap-wrapper">
+    <div id="minimap"></div>
+    <div class="minimap-label">Overview</div>
+  </div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    satellite: {
+      version: 8,
+      sources: {
+        satellite: {
+          type: 'raster',
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tileSize: 256
+        }
+      },
+      layers: [{ id: 'satellite', type: 'raster', source: 'satellite' }]
+    }
+  };
+
+  // Style items for the style switcher plugin
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  let zoomOffset = -4;
+  let showViewport = true;
+  let minimapSize = 200;
+  let currentPosition = 'bottom-left';
+
+  // Main map
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.5, 24.4],
+    zoom: 10
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  // Add style switcher control
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      map.setStyle(to.styleUrl);
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  // Minimap
+  const minimap = new maplibregl.Map({
+    container: 'minimap',
+    style: mapStyles.positron,
+    center: map.getCenter(),
+    zoom: map.getZoom() + zoomOffset,
+    interactive: false,
+    attributionControl: false
+  });
+
+  // Viewport indicator element
+  const viewportIndicator = document.createElement('div');
+  viewportIndicator.className = 'viewport-indicator';
+  document.getElementById('minimap').appendChild(viewportIndicator);
+
+  // Sync minimap with main map
+  function syncMinimap() {
+    minimap.setCenter(map.getCenter());
+    minimap.setZoom(map.getZoom() + zoomOffset);
+    minimap.setBearing(map.getBearing());
+    updateViewportIndicator();
+  }
+
+  function updateViewportIndicator() {
+    if (!showViewport) {
+      viewportIndicator.style.display = 'none';
+      return;
+    }
+    viewportIndicator.style.display = 'block';
+
+    const bounds = map.getBounds();
+    const minimapContainer = document.getElementById('minimap');
+    const containerRect = minimapContainer.getBoundingClientRect();
+
+    // Convert bounds to pixels on minimap
+    const nw = minimap.project(bounds.getNorthWest());
+    const se = minimap.project(bounds.getSouthEast());
+
+    // Calculate viewport rectangle
+    const left = Math.max(0, nw.x);
+    const top = Math.max(0, nw.y);
+    const right = Math.min(containerRect.width, se.x);
+    const bottom = Math.min(containerRect.height, se.y);
+
+    viewportIndicator.style.left = left + 'px';
+    viewportIndicator.style.top = top + 'px';
+    viewportIndicator.style.width = Math.max(10, right - left) + 'px';
+    viewportIndicator.style.height = Math.max(10, bottom - top) + 'px';
+  }
+
+  map.on('move', syncMinimap);
+  map.on('zoom', syncMinimap);
+  map.on('rotate', syncMinimap);
+
+  map.on('load', () => {
+    setEnglishLabels(map);
+    syncMinimap();
+  });
+
+  minimap.on('load', () => {
+    setEnglishLabels(minimap);
+  });
+
+  function updateZoomOffset(value) {
+    zoomOffset = parseInt(value);
+    document.getElementById('zoomValue').textContent = value;
+    syncMinimap();
+  }
+
+  function updateMinimapSize(value) {
+    minimapSize = parseInt(value);
+    document.getElementById('sizeValue').textContent = value + 'px';
+
+    const minimapEl = document.getElementById('minimap');
+    minimapEl.style.width = value + 'px';
+    minimapEl.style.height = Math.round(value * 0.75) + 'px';
+
+    minimap.resize();
+    updateViewportIndicator();
+  }
+
+  function setPosition(position) {
+    currentPosition = position;
+    const container = document.getElementById('minimapContainer');
+
+    document.querySelectorAll('.position-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    // Reset all positions
+    container.style.top = 'auto';
+    container.style.bottom = 'auto';
+    container.style.left = 'auto';
+    container.style.right = 'auto';
+    container.style.transform = 'none';
+
+    switch (position) {
+      case 'top-left':
+        container.style.top = '10px';
+        container.style.left = '280px';
+        break;
+      case 'top-center':
+        container.style.top = '10px';
+        container.style.left = '50%';
+        container.style.transform = 'translateX(-50%)';
+        break;
+      case 'top-right':
+        container.style.top = '10px';
+        container.style.right = '60px';
+        break;
+      case 'bottom-left':
+        container.style.bottom = '30px';
+        container.style.left = '10px';
+        break;
+      case 'bottom-center':
+        container.style.bottom = '30px';
+        container.style.left = '50%';
+        container.style.transform = 'translateX(-50%)';
+        break;
+      case 'bottom-right':
+        container.style.bottom = '30px';
+        container.style.right = '60px';
+        break;
+    }
+  }
+
+  function toggleViewport() {
+    showViewport = document.getElementById('showViewport').checked;
+    updateViewportIndicator();
+  }
+
+  function toggleMinimap() {
+    const visible = document.getElementById('showMinimap').checked;
+    document.getElementById('minimapContainer').style.display = visible ? 'block' : 'none';
+  }
+
+  function changeMinimapStyle(styleName) {
+    minimap.setStyle(mapStyles[styleName]);
+    minimap.once('style.load', () => {
+      setEnglishLabels(minimap);
+    });
+  }
+
+  function setEnglishLabels(mapInstance) {
+    const style = mapInstance.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { mapInstance.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', () => setEnglishLabels(map));
+  minimap.on('style.load', () => setEnglishLabels(minimap));
+</script>
+</body>
+</html>

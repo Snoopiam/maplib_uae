@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zoom-Based Color - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .style-selector {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+    }
+    .style-selector select {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      cursor: pointer;
+    }
+
+    .control-panel {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      z-index: 1000;
+      min-width: 280px;
+    }
+    .control-panel h3 { margin: 0 0 15px; color: #1a365d; font-size: 16px; }
+    .control-panel p { color: #666; font-size: 13px; margin-bottom: 15px; }
+
+    .zoom-display {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 15px;
+      background: linear-gradient(135deg, #e2714b, #eee695);
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .zoom-value {
+      font-size: 2em;
+      font-weight: 700;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .zoom-label {
+      color: white;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .color-scale {
+      display: flex;
+      height: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .color-scale div { flex: 1; }
+
+    .scale-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      margin-top: 15px;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #3182ce; color: white; }
+    .btn-primary:hover { background: #2c5282; }
+    .btn-secondary { background: #e2e8f0; color: #1a365d; margin-top: 8px; }
+    .btn-secondary:hover { background: #cbd5e0; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">← Back to Index</a>
+
+<div class="style-selector">
+  <select id="styleSelect" onchange="changeStyle(this.value)">
+    <option value="voyager">Voyager (Detailed)</option>
+    <option value="positron">Positron (Light)</option>
+    <option value="dark">Dark Matter</option>
+  </select>
+</div>
+
+<div class="control-panel">
+  <h3>Zoom-Based Building Color</h3>
+  <p>Buildings smoothly transition from orange to yellow as you zoom in.</p>
+
+  <div class="zoom-display" id="zoomDisplay">
+    <span class="zoom-value" id="zoomValue">13.0</span>
+    <span class="zoom-label">Current Zoom Level</span>
+  </div>
+
+  <div class="color-scale">
+    <div style="background: #e2714b;"></div>
+    <div style="background: #e88a5c;"></div>
+    <div style="background: #eea36d;"></div>
+    <div style="background: #f4bc7e;"></div>
+    <div style="background: #f9d58f;"></div>
+    <div style="background: #eee695;"></div>
+  </div>
+  <div class="scale-labels">
+    <span>Zoom 13</span>
+    <span>Zoom 18</span>
+    <span>Zoom 22</span>
+  </div>
+
+  <button class="btn btn-primary" onclick="zoomIn()">Zoom In (Animated)</button>
+  <button class="btn btn-secondary" onclick="resetView()">Reset View</button>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [55.2744, 25.1972], // Downtown Dubai
+    zoom: 13,
+    pitch: 45
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+  function applyBuildingStyles() {
+    const buildingLayers = ['building', 'building-top'];
+
+    buildingLayers.forEach(layerId => {
+      try {
+        if (map.getLayer(layerId)) {
+          // Color interpolation based on zoom
+          map.setPaintProperty(layerId, 'fill-color', [
+            'interpolate',
+            ['exponential', 0.5],
+            ['zoom'],
+            13, '#e2714b',
+            18, '#f4bc7e',
+            22, '#eee695'
+          ]);
+
+          // Opacity interpolation
+          map.setPaintProperty(layerId, 'fill-opacity', [
+            'interpolate',
+            ['exponential', 0.5],
+            ['zoom'],
+            13, 0.6,
+            18, 0.8,
+            22, 1
+          ]);
+        }
+      } catch (e) {
+        console.log('Could not style layer:', layerId);
+      }
+    });
+  }
+
+  function updateZoomDisplay() {
+    const zoom = map.getZoom().toFixed(1);
+    document.getElementById('zoomValue').textContent = zoom;
+
+    // Update gradient background based on zoom
+    const progress = Math.min(Math.max((map.getZoom() - 13) / 9, 0), 1);
+    const r = Math.round(226 + (238 - 226) * progress);
+    const g = Math.round(113 + (230 - 113) * progress);
+    const b = Math.round(75 + (149 - 75) * progress);
+    document.getElementById('zoomDisplay').style.background =
+      `linear-gradient(135deg, rgb(${r},${g},${b}), #eee695)`;
+  }
+
+  map.on('zoom', updateZoomDisplay);
+
+  function zoomIn() {
+    map.zoomTo(19, { duration: 5000 });
+  }
+
+  function resetView() {
+    map.flyTo({
+      center: [55.2744, 25.1972],
+      zoom: 13,
+      pitch: 45,
+      duration: 2000
+    });
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  function changeStyle(styleName) {
+    map.setStyle(mapStyles[styleName]);
+    map.once('style.load', () => {
+      setEnglishLabels();
+      applyBuildingStyles();
+    });
+  }
+
+  map.on('style.load', () => {
+    setEnglishLabels();
+    applyBuildingStyles();
+    updateZoomDisplay();
+  });
+</script>
+</body>
+</html>

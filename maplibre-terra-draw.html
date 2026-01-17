@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Draw Shapes - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <script src="https://unpkg.com/@turf/turf@latest"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; cursor: default; }
+    #map.drawing { cursor: crosshair; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 300px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .tool-btn {
+      padding: 12px 8px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 11px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .tool-btn:hover { border-color: #3182ce; background: #ebf8ff; }
+    .tool-btn.active { background: #3182ce; color: white; border-color: #3182ce; }
+    .tool-btn .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+    .action-btns {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .btn-danger { background: #e53e3e; color: white; }
+    .btn-danger:hover { background: #c53030; }
+    .btn-outline { background: white; border: 2px solid #e2e8f0; color: #666; }
+    .btn-outline:hover { border-color: #3182ce; color: #3182ce; }
+
+    .mode-indicator {
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      background: #e2e8f0;
+      color: #4a5568;
+      margin-bottom: 15px;
+    }
+    .mode-indicator.active { background: #c6f6d5; color: #22543d; }
+
+    .features-list {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 15px;
+    }
+    .features-list h4 { font-size: 12px; color: #666; margin-bottom: 10px; }
+    .feature-count {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .feature-count .count {
+      background: #e2e8f0;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      color: #4a5568;
+    }
+
+    .shape-info {
+      background: #f7fafc;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 12px;
+      display: none;
+    }
+    .shape-info.visible { display: block; }
+    .shape-info p { margin: 5px 0; }
+    .shape-info strong { color: #1a365d; }
+    .shape-info .value { color: #3182ce; font-weight: 600; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .color-picker {
+      margin-bottom: 15px;
+    }
+    .color-picker label { font-size: 12px; color: #666; display: block; margin-bottom: 5px; }
+    .color-options {
+      display: flex;
+      gap: 6px;
+    }
+    .color-option {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .color-option:hover { transform: scale(1.1); }
+    .color-option.active { border-color: #1a365d; box-shadow: 0 0 0 2px white inset; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>Draw Shapes</h3>
+  <p>Draw points, lines, polygons, rectangles, and circles</p>
+
+  <div class="tool-grid">
+    <button class="tool-btn" onclick="setMode('point')" id="btn-point">
+      <span class="icon">&#x2022;</span>Point
+    </button>
+    <button class="tool-btn" onclick="setMode('line')" id="btn-line">
+      <span class="icon">&#x2014;</span>Line
+    </button>
+    <button class="tool-btn" onclick="setMode('polygon')" id="btn-polygon">
+      <span class="icon">&#x25B3;</span>Polygon
+    </button>
+    <button class="tool-btn" onclick="setMode('rectangle')" id="btn-rectangle">
+      <span class="icon">&#x25A1;</span>Rectangle
+    </button>
+    <button class="tool-btn" onclick="setMode('circle')" id="btn-circle">
+      <span class="icon">&#x25CB;</span>Circle
+    </button>
+    <button class="tool-btn active" onclick="setMode('pan')" id="btn-pan">
+      <span class="icon">&#x270B;</span>Pan
+    </button>
+  </div>
+
+  <div class="color-picker">
+    <label>Shape Color</label>
+    <div class="color-options">
+      <div class="color-option active" style="background: #3182ce;" onclick="setColor('#3182ce')"></div>
+      <div class="color-option" style="background: #e53e3e;" onclick="setColor('#e53e3e')"></div>
+      <div class="color-option" style="background: #38a169;" onclick="setColor('#38a169')"></div>
+      <div class="color-option" style="background: #d69e2e;" onclick="setColor('#d69e2e')"></div>
+      <div class="color-option" style="background: #805ad5;" onclick="setColor('#805ad5')"></div>
+      <div class="color-option" style="background: #d53f8c;" onclick="setColor('#d53f8c')"></div>
+    </div>
+  </div>
+
+  <div class="mode-indicator" id="modeIndicator">Pan Mode - Navigate the map</div>
+
+  <div class="action-btns">
+    <button class="action-btn btn-outline" onclick="undoLast()">Undo</button>
+    <button class="action-btn btn-outline" onclick="exportFeatures()">Export</button>
+    <button class="action-btn btn-danger" onclick="clearAll()">Clear All</button>
+  </div>
+
+  <div class="features-list">
+    <h4>Drawn Features</h4>
+    <div class="feature-count"><span>Points</span><span class="count" id="countPoints">0</span></div>
+    <div class="feature-count"><span>Lines</span><span class="count" id="countLines">0</span></div>
+    <div class="feature-count"><span>Polygons</span><span class="count" id="countPolygons">0</span></div>
+    <div class="feature-count"><span>Rectangles</span><span class="count" id="countRectangles">0</span></div>
+    <div class="feature-count"><span>Circles</span><span class="count" id="countCircles">0</span></div>
+  </div>
+
+  <div class="shape-info" id="shapeInfo">
+    <p><strong>Type:</strong> <span class="value" id="infoType">-</span></p>
+    <p><strong>Area:</strong> <span class="value" id="infoArea">-</span></p>
+    <p><strong>Length:</strong> <span class="value" id="infoLength">-</span></p>
+  </div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  let currentMode = 'pan';
+  let currentColor = '#3182ce';
+  let features = [];
+  let currentDrawing = null;
+  let tempVertices = [];
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.5, 24.4],
+    zoom: 9
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      const savedFeatures = [...features];
+      map.setStyle(to.styleUrl);
+      map.once('style.load', () => {
+        setEnglishLabels();
+        // Re-add all layers and features
+        map.addSource('shapes', { type: 'geojson', data: { type: 'FeatureCollection', features: savedFeatures } });
+        map.addLayer({ id: 'shapes-fill', type: 'fill', source: 'shapes', filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.3 } });
+        map.addLayer({ id: 'shapes-line', type: 'line', source: 'shapes', paint: { 'line-color': ['get', 'color'], 'line-width': 3 } });
+        map.addLayer({ id: 'shapes-point', type: 'circle', source: 'shapes', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-color': 'white' } });
+        map.addSource('temp-drawing', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addLayer({ id: 'temp-fill', type: 'fill', source: 'temp-drawing', filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': currentColor, 'fill-opacity': 0.2 } });
+        map.addLayer({ id: 'temp-line', type: 'line', source: 'temp-drawing', paint: { 'line-color': currentColor, 'line-width': 2, 'line-dasharray': [3, 2] } });
+        map.addLayer({ id: 'temp-points', type: 'circle', source: 'temp-drawing', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 5, 'circle-color': currentColor, 'circle-stroke-width': 2, 'circle-stroke-color': 'white' } });
+        features = savedFeatures;
+      });
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  map.on('load', () => {
+    // Completed shapes
+    map.addSource('shapes', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+      id: 'shapes-fill',
+      type: 'fill',
+      source: 'shapes',
+      filter: ['==', '$type', 'Polygon'],
+      paint: {
+        'fill-color': ['get', 'color'],
+        'fill-opacity': 0.3
+      }
+    });
+
+    map.addLayer({
+      id: 'shapes-line',
+      type: 'line',
+      source: 'shapes',
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 3
+      }
+    });
+
+    map.addLayer({
+      id: 'shapes-point',
+      type: 'circle',
+      source: 'shapes',
+      filter: ['==', '$type', 'Point'],
+      paint: {
+        'circle-radius': 8,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'white'
+      }
+    });
+
+    // Temporary drawing layer
+    map.addSource('temp-drawing', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+      id: 'temp-fill',
+      type: 'fill',
+      source: 'temp-drawing',
+      filter: ['==', '$type', 'Polygon'],
+      paint: {
+        'fill-color': currentColor,
+        'fill-opacity': 0.2
+      }
+    });
+
+    map.addLayer({
+      id: 'temp-line',
+      type: 'line',
+      source: 'temp-drawing',
+      paint: {
+        'line-color': currentColor,
+        'line-width': 2,
+        'line-dasharray': [3, 2]
+      }
+    });
+
+    map.addLayer({
+      id: 'temp-points',
+      type: 'circle',
+      source: 'temp-drawing',
+      filter: ['==', '$type', 'Point'],
+      paint: {
+        'circle-radius': 5,
+        'circle-color': currentColor,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'white'
+      }
+    });
+
+    setEnglishLabels();
+  });
+
+  // Click handler
+  map.on('click', (e) => {
+    if (currentMode === 'pan') return;
+
+    const coords = [e.lngLat.lng, e.lngLat.lat];
+
+    if (currentMode === 'point') {
+      // Create point immediately
+      addFeature({
+        type: 'Feature',
+        properties: { type: 'point', color: currentColor },
+        geometry: { type: 'Point', coordinates: coords }
+      });
+    } else if (currentMode === 'circle') {
+      if (!currentDrawing) {
+        // First click - set center
+        currentDrawing = { center: coords };
+        updateTempDrawing();
+      } else {
+        // Second click - set radius and complete
+        const radius = turf.distance(currentDrawing.center, coords, { units: 'kilometers' });
+        const circle = turf.circle(currentDrawing.center, radius, { steps: 64, units: 'kilometers' });
+        circle.properties = { type: 'circle', color: currentColor, radius: radius };
+        addFeature(circle);
+        currentDrawing = null;
+        clearTemp();
+      }
+    } else if (currentMode === 'rectangle') {
+      if (!currentDrawing) {
+        // First click - set corner
+        currentDrawing = { corner1: coords };
+        updateTempDrawing();
+      } else {
+        // Second click - complete rectangle
+        const corner1 = currentDrawing.corner1;
+        const corner2 = coords;
+        const rect = turf.bboxPolygon([
+          Math.min(corner1[0], corner2[0]),
+          Math.min(corner1[1], corner2[1]),
+          Math.max(corner1[0], corner2[0]),
+          Math.max(corner1[1], corner2[1])
+        ]);
+        rect.properties = { type: 'rectangle', color: currentColor };
+        addFeature(rect);
+        currentDrawing = null;
+        clearTemp();
+      }
+    } else if (currentMode === 'line') {
+      // Check if clicking near first point to close
+      if (tempVertices.length >= 2) {
+        const firstVertex = tempVertices[0];
+        const dist = turf.distance(coords, firstVertex, { units: 'kilometers' });
+        if (dist < 0.05) {
+          // Complete line
+          completeLine();
+          return;
+        }
+      }
+      tempVertices.push(coords);
+      updateTempDrawing();
+    } else if (currentMode === 'polygon') {
+      // Check if clicking near first point to close
+      if (tempVertices.length >= 3) {
+        const firstVertex = tempVertices[0];
+        const dist = turf.distance(coords, firstVertex, { units: 'kilometers' });
+        if (dist < 0.05) {
+          // Complete polygon
+          completePolygon();
+          return;
+        }
+      }
+      tempVertices.push(coords);
+      updateTempDrawing();
+    }
+  });
+
+  // Double click to complete line/polygon
+  map.on('dblclick', (e) => {
+    e.preventDefault();
+    if (currentMode === 'line' && tempVertices.length >= 2) {
+      completeLine();
+    } else if (currentMode === 'polygon' && tempVertices.length >= 3) {
+      completePolygon();
+    }
+  });
+
+  // Mouse move for preview
+  map.on('mousemove', (e) => {
+    if (currentMode === 'pan') return;
+
+    const coords = [e.lngLat.lng, e.lngLat.lat];
+
+    if (currentMode === 'circle' && currentDrawing) {
+      updateTempCircle(coords);
+    } else if (currentMode === 'rectangle' && currentDrawing) {
+      updateTempRectangle(coords);
+    } else if ((currentMode === 'line' || currentMode === 'polygon') && tempVertices.length > 0) {
+      updateTempLineOrPolygon(coords);
+    }
+  });
+
+  function setMode(mode) {
+    // Cancel current drawing
+    currentDrawing = null;
+    tempVertices = [];
+    clearTemp();
+
+    currentMode = mode;
+
+    // Update UI
+    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('btn-' + mode).classList.add('active');
+
+    const indicator = document.getElementById('modeIndicator');
+    const mapEl = document.getElementById('map');
+
+    const modeDescriptions = {
+      point: 'Point Mode - Click to place points',
+      line: 'Line Mode - Click to draw, double-click to finish',
+      polygon: 'Polygon Mode - Click to draw, double-click to close',
+      rectangle: 'Rectangle Mode - Click two corners',
+      circle: 'Circle Mode - Click center, then click to set radius',
+      pan: 'Pan Mode - Navigate the map'
+    };
+
+    indicator.textContent = modeDescriptions[mode] || mode;
+    indicator.classList.toggle('active', mode !== 'pan');
+    mapEl.classList.toggle('drawing', mode !== 'pan');
+  }
+
+  function setColor(color) {
+    currentColor = color;
+    document.querySelectorAll('.color-option').forEach(el => el.classList.remove('active'));
+    event.target.classList.add('active');
+
+    // Update temp layer colors
+    if (map.getLayer('temp-fill')) {
+      map.setPaintProperty('temp-fill', 'fill-color', color);
+    }
+    if (map.getLayer('temp-line')) {
+      map.setPaintProperty('temp-line', 'line-color', color);
+    }
+    if (map.getLayer('temp-points')) {
+      map.setPaintProperty('temp-points', 'circle-color', color);
+    }
+  }
+
+  function updateTempDrawing() {
+    const tempFeatures = [];
+
+    // Show vertices as points
+    tempVertices.forEach(v => {
+      tempFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: v }
+      });
+    });
+
+    // Show circle center
+    if (currentDrawing && currentDrawing.center) {
+      tempFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: currentDrawing.center }
+      });
+    }
+
+    // Show rectangle corner
+    if (currentDrawing && currentDrawing.corner1) {
+      tempFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: currentDrawing.corner1 }
+      });
+    }
+
+    map.getSource('temp-drawing').setData({
+      type: 'FeatureCollection',
+      features: tempFeatures
+    });
+  }
+
+  function updateTempCircle(mouseCoords) {
+    const radius = turf.distance(currentDrawing.center, mouseCoords, { units: 'kilometers' });
+    const circle = turf.circle(currentDrawing.center, radius, { steps: 64, units: 'kilometers' });
+
+    const centerPoint = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: currentDrawing.center }
+    };
+
+    map.getSource('temp-drawing').setData({
+      type: 'FeatureCollection',
+      features: [circle, centerPoint]
+    });
+
+    // Show radius info
+    showShapeInfo('Circle', null, radius);
+  }
+
+  function updateTempRectangle(mouseCoords) {
+    const corner1 = currentDrawing.corner1;
+    const rect = turf.bboxPolygon([
+      Math.min(corner1[0], mouseCoords[0]),
+      Math.min(corner1[1], mouseCoords[1]),
+      Math.max(corner1[0], mouseCoords[0]),
+      Math.max(corner1[1], mouseCoords[1])
+    ]);
+
+    const cornerPoint = {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: corner1 }
+    };
+
+    map.getSource('temp-drawing').setData({
+      type: 'FeatureCollection',
+      features: [rect, cornerPoint]
+    });
+
+    const area = turf.area(rect);
+    showShapeInfo('Rectangle', area, null);
+  }
+
+  function updateTempLineOrPolygon(mouseCoords) {
+    const allCoords = [...tempVertices, mouseCoords];
+    const tempFeatures = [];
+
+    // Points for vertices
+    tempVertices.forEach(v => {
+      tempFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: v }
+      });
+    });
+
+    if (currentMode === 'polygon' && allCoords.length >= 3) {
+      // Show as polygon
+      const polygonCoords = [...allCoords, allCoords[0]];
+      tempFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [polygonCoords] }
+      });
+
+      const area = turf.area(tempFeatures[tempFeatures.length - 1]);
+      showShapeInfo('Polygon', area, null);
+    } else if (allCoords.length >= 2) {
+      // Show as line
+      tempFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: allCoords }
+      });
+
+      const length = turf.length(tempFeatures[tempFeatures.length - 1], { units: 'kilometers' });
+      showShapeInfo(currentMode === 'line' ? 'Line' : 'Polygon', null, length);
+    }
+
+    map.getSource('temp-drawing').setData({
+      type: 'FeatureCollection',
+      features: tempFeatures
+    });
+  }
+
+  function completeLine() {
+    if (tempVertices.length < 2) return;
+
+    const line = {
+      type: 'Feature',
+      properties: { type: 'line', color: currentColor },
+      geometry: { type: 'LineString', coordinates: tempVertices }
+    };
+    addFeature(line);
+    tempVertices = [];
+    clearTemp();
+    hideShapeInfo();
+  }
+
+  function completePolygon() {
+    if (tempVertices.length < 3) return;
+
+    const polygon = {
+      type: 'Feature',
+      properties: { type: 'polygon', color: currentColor },
+      geometry: { type: 'Polygon', coordinates: [[...tempVertices, tempVertices[0]]] }
+    };
+    addFeature(polygon);
+    tempVertices = [];
+    clearTemp();
+    hideShapeInfo();
+  }
+
+  function addFeature(feature) {
+    features.push(feature);
+    updateShapesLayer();
+    updateCounts();
+  }
+
+  function updateShapesLayer() {
+    map.getSource('shapes').setData({
+      type: 'FeatureCollection',
+      features: features
+    });
+  }
+
+  function clearTemp() {
+    map.getSource('temp-drawing').setData({
+      type: 'FeatureCollection',
+      features: []
+    });
+  }
+
+  function showShapeInfo(type, area, length) {
+    document.getElementById('shapeInfo').classList.add('visible');
+    document.getElementById('infoType').textContent = type;
+
+    if (area !== null) {
+      const areaStr = area < 1000000 ?
+        `${area.toFixed(0)} m²` :
+        `${(area / 1000000).toFixed(3)} km²`;
+      document.getElementById('infoArea').textContent = areaStr;
+    } else {
+      document.getElementById('infoArea').textContent = '-';
+    }
+
+    if (length !== null) {
+      const lengthStr = length < 1 ?
+        `${(length * 1000).toFixed(0)} m` :
+        `${length.toFixed(2)} km`;
+      document.getElementById('infoLength').textContent = lengthStr;
+    } else {
+      document.getElementById('infoLength').textContent = '-';
+    }
+  }
+
+  function hideShapeInfo() {
+    document.getElementById('shapeInfo').classList.remove('visible');
+  }
+
+  function updateCounts() {
+    let points = 0, lines = 0, polygons = 0, rectangles = 0, circles = 0;
+
+    features.forEach(f => {
+      const type = f.properties.type;
+      if (type === 'point') points++;
+      else if (type === 'line') lines++;
+      else if (type === 'polygon') polygons++;
+      else if (type === 'rectangle') rectangles++;
+      else if (type === 'circle') circles++;
+    });
+
+    document.getElementById('countPoints').textContent = points;
+    document.getElementById('countLines').textContent = lines;
+    document.getElementById('countPolygons').textContent = polygons;
+    document.getElementById('countRectangles').textContent = rectangles;
+    document.getElementById('countCircles').textContent = circles;
+  }
+
+  function undoLast() {
+    if (features.length > 0) {
+      features.pop();
+      updateShapesLayer();
+      updateCounts();
+    }
+  }
+
+  function clearAll() {
+    features = [];
+    tempVertices = [];
+    currentDrawing = null;
+    updateShapesLayer();
+    clearTemp();
+    updateCounts();
+    hideShapeInfo();
+  }
+
+  function exportFeatures() {
+    if (features.length === 0) {
+      alert('No features to export!');
+      return;
+    }
+
+    const geojson = {
+      type: 'FeatureCollection',
+      features: features.map(f => ({
+        type: 'Feature',
+        geometry: f.geometry,
+        properties: { type: f.properties.type }
+      }))
+    };
+
+    navigator.clipboard.writeText(JSON.stringify(geojson, null, 2)).then(() => {
+      alert(`Exported ${features.length} feature(s) to clipboard!`);
+    }).catch(() => {
+      console.log(JSON.stringify(geojson, null, 2));
+      alert('GeoJSON logged to console');
+    });
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>

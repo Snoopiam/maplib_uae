@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MapLibre GL JS Examples - UAE</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 50px;
+      color: white;
+    }
+    header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    header p {
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .phase-title {
+      color: white;
+      font-size: 1.5em;
+      margin: 40px 0 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid rgba(255,255,255,0.3);
+    }
+    .phase-title span {
+      background: rgba(255,255,255,0.2);
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.6em;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 25px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      transition: transform 0.3s, box-shadow 0.3s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    }
+
+    .card-icon {
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3em;
+    }
+
+    .card-content {
+      padding: 20px;
+    }
+    .card-content h3 {
+      font-size: 1.1em;
+      color: #1a365d;
+      margin-bottom: 8px;
+    }
+    .card-content p {
+      font-size: 0.9em;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    .card-tag {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: 600;
+      margin-top: 10px;
+    }
+    .tag-basic { background: #e2e8f0; color: #475569; }
+    .tag-enhanced { background: #fef3c7; color: #92400e; }
+    .tag-3d { background: #dbeafe; color: #1e40af; }
+    .tag-drawing { background: #dcfce7; color: #166534; }
+    .tag-plugin { background: #f3e8ff; color: #7c3aed; }
+
+    .existing {
+      margin-top: 50px;
+      padding-top: 30px;
+      border-top: 2px solid rgba(255,255,255,0.2);
+    }
+
+    /* Color schemes for cards */
+    .bg-blue { background: linear-gradient(135deg, #3182ce, #63b3ed); }
+    .bg-green { background: linear-gradient(135deg, #38a169, #68d391); }
+    .bg-purple { background: linear-gradient(135deg, #805ad5, #b794f4); }
+    .bg-orange { background: linear-gradient(135deg, #dd6b20, #f6ad55); }
+    .bg-pink { background: linear-gradient(135deg, #d53f8c, #f687b3); }
+    .bg-teal { background: linear-gradient(135deg, #319795, #4fd1c5); }
+    .bg-red { background: linear-gradient(135deg, #e53e3e, #fc8181); }
+    .bg-yellow { background: linear-gradient(135deg, #d69e2e, #f6e05e); }
+    .bg-indigo { background: linear-gradient(135deg, #5a67d8, #a3bffa); }
+    .bg-cyan { background: linear-gradient(135deg, #0891b2, #67e8f9); }
+
+    .card-icon { color: white; }
+
+    .status-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.7em;
+      font-weight: 600;
+    }
+    .status-ready { background: #dcfce7; color: #166534; }
+    .status-pending { background: #fef3c7; color: #92400e; }
+
+    .card { position: relative; }
+
+    .card.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+      filter: grayscale(100%);
+    }
+    .card.disabled::after {
+      content: 'Coming Soon';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .resources-section {
+      margin-top: 60px;
+      padding-top: 40px;
+      border-top: 2px solid rgba(255,255,255,0.2);
+    }
+    .resources-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .resource-card {
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+    }
+    .resource-card h4 {
+      color: white;
+      font-size: 0.95em;
+      margin-bottom: 8px;
+    }
+    .resource-card p {
+      color: rgba(255,255,255,0.7);
+      font-size: 0.85em;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .resource-card a {
+      color: #67e8f9;
+      font-size: 0.8em;
+      word-break: break-all;
+    }
+    .resource-card a:hover {
+      color: #a5f3fc;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>MapLibre GL JS Examples</h1>
+    <p>Interactive map examples centered on UAE - Click any card to open the example</p>
+  </header>
+
+  <!-- Existing Maps -->
+  <h2 class="phase-title">Existing Maps</h2>
+  <div class="grid">
+    <a href="uae-map-basic.html" class="card">
+      <div class="card-icon bg-blue">🗺️</div>
+      <div class="card-content">
+        <h3>UAE Basic Map</h3>
+        <p>Simple map with style selector and navigation controls.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+    <a href="uae-real-estate-map.html" class="card disabled">
+      <div class="card-icon bg-green">🏠</div>
+      <div class="card-content">
+        <h3>UAE Real Estate Map</h3>
+        <p>Needs accurate property data - temporarily disabled.</p>
+        <span class="card-tag tag-basic">WIP</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- Phase 1 -->
+  <h2 class="phase-title">Phase 1: Core Features <span>8 examples</span></h2>
+  <div class="grid">
+    <!-- Locate User removed - now default in all maps -->
+    <a href="maplibre-realtime-data.html" class="card disabled">
+      <div class="card-icon bg-teal">📡</div>
+      <div class="card-content">
+        <h3>Live Realtime Data</h3>
+        <p>Needs real data source - temporarily disabled.</p>
+        <span class="card-tag tag-basic">WIP</span>
+      </div>
+    </a>
+    <a href="maplibre-camera-animation.html" class="card">
+      <div class="card-icon bg-purple">🎬</div>
+      <div class="card-content">
+        <h3>Camera Animation</h3>
+        <p>Rotating 3D camera with play/pause and speed controls.</p>
+        <span class="card-tag tag-3d">3D</span>
+      </div>
+    </a>
+    <a href="maplibre-click-symbol.html" class="card">
+      <div class="card-icon bg-orange">🎯</div>
+      <div class="card-content">
+        <h3>Click Symbol</h3>
+        <p>Click markers to fly to location with info popups.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+    <a href="maplibre-color-picker.html" class="card">
+      <div class="card-icon bg-pink">🎨</div>
+      <div class="card-content">
+        <h3>Color Picker</h3>
+        <p>Gradient palettes and custom color picker for map layers.</p>
+        <span class="card-tag tag-enhanced">Enhanced</span>
+      </div>
+    </a>
+    <a href="maplibre-zoom-color.html" class="card disabled">
+      <div class="card-icon bg-yellow">🔍</div>
+      <div class="card-content">
+        <h3>Zoom-Based Color</h3>
+        <p>Demo feature - temporarily disabled.</p>
+        <span class="card-tag tag-basic">WIP</span>
+      </div>
+    </a>
+    <a href="maplibre-draggable-marker.html" class="card">
+      <div class="card-icon bg-red">✋</div>
+      <div class="card-content">
+        <h3>Draggable Markers</h3>
+        <p>Multi-marker with distance, clipboard, and coordinate formats.</p>
+        <span class="card-tag tag-enhanced">Enhanced</span>
+      </div>
+    </a>
+    <a href="maplibre-pmtiles.html" class="card disabled">
+      <div class="card-icon bg-indigo">📦</div>
+      <div class="card-content">
+        <h3>PMTiles Source</h3>
+        <p>No UAE PMTiles available - shows Florence demo.</p>
+        <span class="card-tag tag-basic">WIP</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- Phase 2 -->
+  <h2 class="phase-title">Phase 2: Advanced Features <span>10 examples</span></h2>
+  <div class="grid">
+    <a href="maplibre-satellite.html" class="card">
+      <div class="card-icon bg-cyan">🛰️</div>
+      <div class="card-content">
+        <h3>Satellite Map</h3>
+        <p>Satellite/aerial imagery with toggle overlay.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+    <a href="maplibre-fly-to.html" class="card">
+      <div class="card-icon bg-blue">✈️</div>
+      <div class="card-content">
+        <h3>Fly To Location</h3>
+        <p>Smooth camera transitions between UAE landmarks.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+    <a href="maplibre-filter-toggle.html" class="card">
+      <div class="card-icon bg-green">☑️</div>
+      <div class="card-content">
+        <h3>Filter by City</h3>
+        <p>City-based filtering with expandable place lists for 7 UAE emirates.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+    <a href="maplibre-filter-text.html" class="card">
+      <div class="card-icon bg-purple">🔎</div>
+      <div class="card-content">
+        <h3>Filter by Text</h3>
+        <p>Search input to filter map symbols dynamically.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+    <a href="maplibre-3d-indoor.html" class="card">
+      <div class="card-icon bg-orange">🏢</div>
+      <div class="card-content">
+        <h3>3D Indoor Mapping</h3>
+        <p>5 UAE buildings with multi-floor views, 13 room types, 3 view modes.</p>
+        <span class="card-tag tag-3d">3D</span>
+      </div>
+    </a>
+    <a href="maplibre-draw-polygon.html" class="card">
+      <div class="card-icon bg-teal">⬡</div>
+      <div class="card-content">
+        <h3>Draw Polygon</h3>
+        <p>Draw and edit polygons using mapbox-gl-draw.</p>
+        <span class="card-tag tag-drawing">Drawing</span>
+      </div>
+    </a>
+    <a href="maplibre-terra-draw.html" class="card">
+      <div class="card-icon bg-pink">✏️</div>
+      <div class="card-content">
+        <h3>Draw Shapes</h3>
+        <p>Draw points, lines, polygons, rectangles, and circles with Turf.js.</p>
+        <span class="card-tag tag-drawing">Drawing</span>
+      </div>
+    </a>
+    <a href="maplibre-draw-circle.html" class="card">
+      <div class="card-icon bg-yellow">⭕</div>
+      <div class="card-content">
+        <h3>Draw Circle</h3>
+        <p>Draw circles with radius display on the map.</p>
+        <span class="card-tag tag-drawing">Drawing</span>
+      </div>
+    </a>
+    <a href="maplibre-3d-buildings.html" class="card">
+      <div class="card-icon bg-indigo">🏙️</div>
+      <div class="card-content">
+        <h3>3D Buildings</h3>
+        <p>Extruded building polygons with lighting effects.</p>
+        <span class="card-tag tag-3d">3D</span>
+      </div>
+    </a>
+    <a href="maplibre-rich-text.html" class="card">
+      <div class="card-icon bg-red">🔤</div>
+      <div class="card-content">
+        <h3>Custom Text Labels</h3>
+        <p>Click map to add custom labels with style presets.</p>
+        <span class="card-tag tag-basic">Basic</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- Phase 3: Plugins -->
+  <h2 class="phase-title">Phase 3: Official Plugins <span>5 examples</span></h2>
+  <div class="grid">
+    <a href="maplibre-gl-draw.html" class="card">
+      <div class="card-icon bg-teal">✏️</div>
+      <div class="card-content">
+        <h3>GL Draw Plugin</h3>
+        <p>Official Mapbox GL Draw for points, lines, and polygons.</p>
+        <span class="card-tag tag-plugin">Plugin</span>
+      </div>
+    </a>
+    <a href="maplibre-compare.html" class="card">
+      <div class="card-icon bg-purple">⚖️</div>
+      <div class="card-content">
+        <h3>Map Compare</h3>
+        <p>Side-by-side style comparison with swipe slider.</p>
+        <span class="card-tag tag-plugin">Plugin</span>
+      </div>
+    </a>
+    <a href="maplibre-minimap.html" class="card">
+      <div class="card-icon bg-blue">🗺️</div>
+      <div class="card-content">
+        <h3>Minimap</h3>
+        <p>Overview minimap with viewport indicator and position controls.</p>
+        <span class="card-tag tag-plugin">Plugin</span>
+      </div>
+    </a>
+    <a href="maplibre-export.html" class="card">
+      <div class="card-icon bg-orange">📥</div>
+      <div class="card-content">
+        <h3>Map Export</h3>
+        <p>Export map as PNG, JPEG, or WebP with size presets.</p>
+        <span class="card-tag tag-plugin">Plugin</span>
+      </div>
+    </a>
+    <a href="maplibre-legend.html" class="card">
+      <div class="card-icon bg-green">📋</div>
+      <div class="card-content">
+        <h3>Dynamic Legend</h3>
+        <p>Auto-updating legend with layer toggles and icons.</p>
+        <span class="card-tag tag-plugin">Plugin</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- Resources & Plugin Repositories -->
+  <div class="resources-section">
+    <h2 class="phase-title">Resources & Plugin Repositories</h2>
+    <div class="resources-grid">
+      <div class="resource-card">
+        <h4>MapLibre GL JS</h4>
+        <p>Open-source map rendering library for web applications.</p>
+        <a href="https://github.com/maplibre/maplibre-gl-js" target="_blank">github.com/maplibre/maplibre-gl-js</a>
+      </div>
+      <div class="resource-card">
+        <h4>Map GL Style Switcher</h4>
+        <p>Visual style switcher control for MapLibre GL JS.</p>
+        <a href="https://github.com/muimsd/map-gl-style-switcher" target="_blank">github.com/muimsd/map-gl-style-switcher</a>
+      </div>
+      <div class="resource-card">
+        <h4>Mapbox GL Draw</h4>
+        <p>Drawing and editing features on maps.</p>
+        <a href="https://github.com/mapbox/mapbox-gl-draw" target="_blank">github.com/mapbox/mapbox-gl-draw</a>
+      </div>
+      <div class="resource-card">
+        <h4>MapLibre GL Export</h4>
+        <p>Export maps as PNG, JPEG, PDF, or SVG.</p>
+        <a href="https://github.com/watergis/maplibre-gl-export" target="_blank">github.com/watergis/maplibre-gl-export</a>
+      </div>
+      <div class="resource-card">
+        <h4>MapLibre GL Compare</h4>
+        <p>Swipe comparison control for two maps.</p>
+        <a href="https://github.com/maplibre/maplibre-gl-compare" target="_blank">github.com/maplibre/maplibre-gl-compare</a>
+      </div>
+      <div class="resource-card">
+        <h4>Mapbox GL Minimap</h4>
+        <p>Overview minimap control for MapLibre.</p>
+        <a href="https://github.com/aesqe/mapboxgl-minimap" target="_blank">github.com/aesqe/mapboxgl-minimap</a>
+      </div>
+      <div class="resource-card">
+        <h4>MapLibre GL Legend</h4>
+        <p>Legend control for layer toggles and styling.</p>
+        <a href="https://github.com/watergis/maplibre-gl-legend" target="_blank">github.com/watergis/maplibre-gl-legend</a>
+      </div>
+      <div class="resource-card">
+        <h4>Turf.js</h4>
+        <p>Advanced geospatial analysis for browsers.</p>
+        <a href="https://github.com/Turfjs/turf" target="_blank">github.com/Turfjs/turf</a>
+      </div>
+      <div class="resource-card">
+        <h4>MapLibre Transition</h4>
+        <p>Smooth style transitions for MapLibre.</p>
+        <a href="https://github.com/popkinj/maplibre-transition" target="_blank">github.com/popkinj/maplibre-transition</a>
+      </div>
+      <div class="resource-card">
+        <h4>MapLibre UI Translations</h4>
+        <p>Internationalization for MapLibre controls.</p>
+        <a href="https://www.npmjs.com/package/maplibre-ui-translations" target="_blank">npmjs.com/package/maplibre-ui-translations</a>
+      </div>
+      <div class="resource-card">
+        <h4>CARTO Basemaps</h4>
+        <p>Free vector basemap styles (Voyager, Positron, Dark Matter).</p>
+        <a href="https://github.com/CartoDB/basemap-styles" target="_blank">github.com/CartoDB/basemap-styles</a>
+      </div>
+      <div class="resource-card">
+        <h4>PMTiles</h4>
+        <p>Cloud-optimized tile archive format.</p>
+        <a href="https://github.com/protomaps/PMTiles" target="_blank">github.com/protomaps/PMTiles</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

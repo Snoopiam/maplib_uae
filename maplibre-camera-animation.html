@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Animation - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      z-index: 1000;
+      min-width: 280px;
+    }
+    .control-panel h3 { margin: 0 0 15px; color: #1a365d; font-size: 16px; }
+
+    .location-btns {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    .loc-btn {
+      padding: 6px 12px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .loc-btn:hover { border-color: #3182ce; }
+    .loc-btn.active { background: #3182ce; color: white; border-color: #3182ce; }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .control-row label { font-size: 13px; color: #666; min-width: 60px; }
+    .control-row input[type="range"] { flex: 1; }
+    .control-row span { font-size: 12px; color: #1a365d; font-weight: 600; min-width: 40px; }
+
+    .btn-group { display: flex; gap: 8px; }
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    .btn-play { background: #38a169; color: white; }
+    .btn-play:hover { background: #2f855a; }
+    .btn-pause { background: #d69e2e; color: white; }
+    .btn-pause:hover { background: #b7791f; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">← Back to Index</a>
+
+<div class="control-panel">
+  <h3>Camera Animation</h3>
+
+  <div class="location-btns">
+    <button class="loc-btn active" onclick="setLocation('burjKhalifa', this)">Burj Khalifa</button>
+    <button class="loc-btn" onclick="setLocation('palmJumeirah', this)">Palm Jumeirah</button>
+    <button class="loc-btn" onclick="setLocation('abuDhabiMosque', this)">Grand Mosque</button>
+    <button class="loc-btn" onclick="setLocation('dubaiMarina', this)">Dubai Marina</button>
+  </div>
+
+  <div class="control-row">
+    <label>Speed</label>
+    <input type="range" id="speedSlider" min="10" max="200" value="100" oninput="updateSpeed(this.value)">
+    <span id="speedValue">1.0x</span>
+  </div>
+
+  <div class="control-row">
+    <label>Pitch</label>
+    <input type="range" id="pitchSlider" min="0" max="85" value="60" oninput="updatePitch(this.value)">
+    <span id="pitchValue">60°</span>
+  </div>
+
+  <div class="btn-group">
+    <button class="btn btn-play" id="playBtn" onclick="toggleAnimation()">▶ Play</button>
+  </div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  const locations = {
+    burjKhalifa: { center: [55.2744, 25.1972], zoom: 16 },
+    palmJumeirah: { center: [55.1378, 25.1122], zoom: 14 },
+    abuDhabiMosque: { center: [54.4747, 24.4128], zoom: 16 },
+    dubaiMarina: { center: [55.1400, 25.0800], zoom: 15 }
+  };
+
+  let currentLocation = 'burjKhalifa';
+  let isAnimating = false;
+  let animationId = null;
+  let rotationSpeed = 100;
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: locations.burjKhalifa.center,
+    zoom: locations.burjKhalifa.zoom,
+    pitch: 60,
+    bearing: 0
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      map.setStyle(to.styleUrl);
+      map.once('style.load', setEnglishLabels);
+    }
+  });
+  map.addControl(styleSwitcher, 'top-left');
+
+  function rotateCamera(timestamp) {
+    if (!isAnimating) return;
+    const rotation = (timestamp / (200 - rotationSpeed + 10)) % 360;
+    map.rotateTo(rotation, { duration: 0 });
+    animationId = requestAnimationFrame(rotateCamera);
+  }
+
+  function toggleAnimation() {
+    isAnimating = !isAnimating;
+    const btn = document.getElementById('playBtn');
+
+    if (isAnimating) {
+      btn.textContent = '⏸ Pause';
+      btn.className = 'btn btn-pause';
+      animationId = requestAnimationFrame(rotateCamera);
+    } else {
+      btn.textContent = '▶ Play';
+      btn.className = 'btn btn-play';
+      if (animationId) cancelAnimationFrame(animationId);
+    }
+  }
+
+  function setLocation(loc, btn) {
+    currentLocation = loc;
+    const { center, zoom } = locations[loc];
+
+    document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    map.flyTo({
+      center,
+      zoom,
+      pitch: parseInt(document.getElementById('pitchSlider').value),
+      duration: 2000
+    });
+  }
+
+  function updateSpeed(value) {
+    rotationSpeed = parseInt(value);
+    document.getElementById('speedValue').textContent = (value / 100).toFixed(1) + 'x';
+  }
+
+  function updatePitch(value) {
+    map.setPitch(parseInt(value));
+    document.getElementById('pitchValue').textContent = value + '°';
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>

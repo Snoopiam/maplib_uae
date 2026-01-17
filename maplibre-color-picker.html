@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Picker - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 320px;
+    }
+    .control-panel h3 { margin: 0 0 15px; color: #1a365d; font-size: 18px; }
+
+    .section { margin-bottom: 20px; }
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+
+    .layer-select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .gradient-palettes {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .palette-btn {
+      height: 40px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .palette-btn:hover { transform: scale(1.05); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .palette-btn.active { box-shadow: 0 0 0 3px #1a365d; }
+    .palette-btn span {
+      position: absolute;
+      bottom: 2px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+
+    .custom-color {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .color-input-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+    }
+    .color-input-wrapper input[type="color"] {
+      width: 30px;
+      height: 30px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .color-input-wrapper input[type="text"] {
+      flex: 1;
+      border: none;
+      font-family: monospace;
+      font-size: 14px;
+      outline: none;
+    }
+    .apply-btn {
+      padding: 10px 20px;
+      background: #3182ce;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .apply-btn:hover { background: #2c5282; }
+
+    .preview-bar {
+      height: 20px;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+
+    .status {
+      font-size: 11px;
+      color: #38a169;
+      margin-top: 8px;
+      padding: 6px 10px;
+      background: #f0fff4;
+      border-radius: 4px;
+    }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">←</a>
+
+<div class="control-panel">
+  <h3>Layer Color Picker</h3>
+
+  <div class="section">
+    <div class="section-title">Select Layer Type</div>
+    <select class="layer-select" id="layerSelect" onchange="updatePalettes()">
+      <option value="water">Water</option>
+      <option value="land">Land / Parks</option>
+      <option value="building">Buildings</option>
+      <option value="road">Roads</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Recommended Colors</div>
+    <div class="gradient-palettes" id="palettes">
+      <!-- Dynamically populated -->
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Custom Color</div>
+    <div class="custom-color">
+      <div class="color-input-wrapper">
+        <input type="color" id="colorPicker" value="#3182ce" onchange="updateColorText()">
+        <input type="text" id="colorText" value="#3182ce" onchange="updateColorPicker()">
+      </div>
+      <button class="apply-btn" onclick="applyCustomColor()">Apply</button>
+    </div>
+  </div>
+
+  <div class="status" id="status">Ready - select a layer and color</div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  // Keywords to match layer IDs for each category
+  const layerKeywords = {
+    water: ['water'],
+    land: ['park', 'grass', 'green', 'landcover', 'landuse'],
+    building: ['building'],
+    road: ['road', 'street', 'highway', 'path', 'tunnel', 'bridge']
+  };
+
+  // Layer-specific color palettes (color = fill, outline = darker border)
+  const layerPalettes = {
+    water: [
+      { name: 'Ocean Blue', color: '#0077b6', outline: '#005f8a' },
+      { name: 'Deep Sea', color: '#1d3557', outline: '#0f1d2f' },
+      { name: 'Turquoise', color: '#14b8a6', outline: '#0d7d71' },
+      { name: 'Light Blue', color: '#7dd3fc', outline: '#38bdf8' }
+    ],
+    land: [
+      { name: 'Forest', color: '#22c55e', outline: '#15803d' },
+      { name: 'Park', color: '#4ade80', outline: '#16a34a' },
+      { name: 'Olive', color: '#84cc16', outline: '#4d7c0f' },
+      { name: 'Nature', color: '#10b981', outline: '#047857' },
+      { name: 'Grass', color: '#a3e635', outline: '#65a30d' },
+      { name: 'Mint', color: '#34d399', outline: '#059669' }
+    ],
+    building: [
+      { name: 'Concrete', color: '#94a3b8', outline: '#475569' },
+      { name: 'Warm Gray', color: '#a8a29e', outline: '#57534e' },
+      { name: 'Sand', color: '#d4a574', outline: '#92400e' },
+      { name: 'Terracotta', color: '#fb923c', outline: '#c2410c' },
+      { name: 'Steel', color: '#64748b', outline: '#334155' },
+      { name: 'Brick', color: '#f87171', outline: '#b91c1c' }
+    ],
+    road: [
+      { name: 'Asphalt', color: '#374151', outline: '#1f2937' },
+      { name: 'Light Gray', color: '#9ca3af', outline: '#4b5563' },
+      { name: 'Dark', color: '#1f2937', outline: '#111827' },
+      { name: 'Yellow', color: '#fde047', outline: '#ca8a04' }
+    ]
+  };
+
+  function updatePalettes() {
+    const layer = document.getElementById('layerSelect').value;
+    const palettes = layerPalettes[layer] || [];
+    const container = document.getElementById('palettes');
+
+    container.innerHTML = palettes.map((p, i) => `
+      <button class="palette-btn ${i === 0 ? 'active' : ''}"
+              style="background: ${p.color}; border: 3px solid ${p.outline};"
+              onclick="applyPalette(this)"
+              data-color="${p.color}"
+              data-outline="${p.outline}">
+        <span>${p.name}</span>
+      </button>
+    `).join('');
+  }
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [55.14, 25.08],
+    zoom: 15,
+    pitch: 45
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      map.setStyle(to.styleUrl);
+      map.once('style.load', setEnglishLabels);
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  function findMatchingLayers(category) {
+    const style = map.getStyle();
+    if (!style || !style.layers) return [];
+
+    const keywords = layerKeywords[category] || [];
+    return style.layers.filter(layer => {
+      const id = layer.id.toLowerCase();
+      return keywords.some(kw => id.includes(kw)) &&
+             (layer.type === 'fill' || layer.type === 'line');
+    });
+  }
+
+  function applyPalette(btn) {
+    document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyColorToLayer(btn.dataset.color, btn.dataset.outline);
+  }
+
+  function applyColorToLayer(color, outline) {
+    const category = document.getElementById('layerSelect').value;
+    const matchingLayers = findMatchingLayers(category);
+    let count = 0;
+
+    // Darken color for outline if not provided
+    if (!outline) {
+      outline = darkenColor(color, 30);
+    }
+
+    matchingLayers.forEach(layer => {
+      try {
+        if (layer.type === 'fill') {
+          map.setPaintProperty(layer.id, 'fill-color', color);
+          map.setPaintProperty(layer.id, 'fill-outline-color', outline);
+          count++;
+        } else if (layer.type === 'line') {
+          map.setPaintProperty(layer.id, 'line-color', color);
+          count++;
+        }
+      } catch (e) {
+        console.log('Could not update layer:', layer.id, e);
+      }
+    });
+
+    document.getElementById('status').textContent =
+      count > 0 ? `Applied to ${count} layer(s)` : 'No matching layers found';
+  }
+
+  function darkenColor(hex, percent) {
+    const num = parseInt(hex.slice(1), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = Math.max((num >> 16) - amt, 0);
+    const G = Math.max((num >> 8 & 0x00FF) - amt, 0);
+    const B = Math.max((num & 0x0000FF) - amt, 0);
+    return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+  }
+
+  function updateColorText() {
+    document.getElementById('colorText').value = document.getElementById('colorPicker').value;
+  }
+
+  function updateColorPicker() {
+    const text = document.getElementById('colorText').value;
+    if (/^#[0-9A-Fa-f]{6}$/.test(text)) {
+      document.getElementById('colorPicker').value = text;
+    }
+  }
+
+  function applyCustomColor() {
+    const color = document.getElementById('colorPicker').value;
+    document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+    applyColorToLayer(color);
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+
+  // Initialize palettes on load
+  updatePalettes();
+</script>
+</body>
+</html>

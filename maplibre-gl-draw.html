@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GL Draw Plugin - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet" />
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 320px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .section-title {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 15px 0 10px;
+      padding-top: 15px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .section-title:first-of-type {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .stat-box {
+      background: #f7fafc;
+      padding: 10px 6px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-box .value { font-size: 22px; font-weight: 700; color: #3182ce; }
+    .stat-box .label { font-size: 9px; color: #666; text-transform: uppercase; }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .color-row label {
+      flex: 1;
+      font-size: 12px;
+      color: #4a5568;
+    }
+    .color-row input[type="color"] {
+      width: 36px;
+      height: 28px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .action-btns {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .action-btn {
+      padding: 10px 8px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .action-btn:hover { border-color: #3182ce; color: #3182ce; }
+    .action-btn.primary { background: #3182ce; color: white; border-color: #3182ce; }
+    .action-btn.primary:hover { background: #2c5282; }
+    .action-btn.danger { color: #e53e3e; }
+    .action-btn.danger:hover { border-color: #e53e3e; background: #fff5f5; }
+    .action-btn.success { color: #38a169; }
+    .action-btn.success:hover { border-color: #38a169; background: #f0fff4; }
+
+    .measurement-box {
+      background: linear-gradient(135deg, #ebf8ff, #e6fffa);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .measurement-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 4px 0;
+    }
+    .measurement-row .label { color: #4a5568; }
+    .measurement-row .value { font-weight: 700; color: #2b6cb0; }
+
+    .feature-list {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 15px;
+    }
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: #f7fafc;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .feature-item:hover { background: #edf2f7; }
+    .feature-item.selected { background: #bee3f8; }
+    .feature-item .icon { font-size: 14px; }
+    .feature-item .name { flex: 1; font-size: 12px; color: #2d3748; }
+    .feature-item .type { font-size: 10px; color: #718096; }
+    .feature-item .delete-btn {
+      padding: 2px 6px;
+      background: #fc8181;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .feature-item:hover .delete-btn { opacity: 1; }
+
+    .mode-indicator {
+      background: #faf5ff;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #553c9a;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mode-indicator .mode-icon { font-size: 16px; }
+    .mode-indicator .mode-text { flex: 1; }
+
+    .import-section {
+      margin-bottom: 15px;
+    }
+    .import-section input[type="file"] {
+      display: none;
+    }
+    .import-label {
+      display: block;
+      padding: 10px;
+      border: 2px dashed #cbd5e0;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 12px;
+      color: #718096;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .import-label:hover {
+      border-color: #3182ce;
+      color: #3182ce;
+      background: #ebf8ff;
+    }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .mapbox-gl-draw_ctrl-draw-btn {
+      background-color: white !important;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      pointer-events: none;
+      z-index: 1000;
+      white-space: nowrap;
+    }
+
+    .keyboard-shortcuts {
+      font-size: 10px;
+      color: #718096;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .keyboard-shortcuts div {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px 0;
+    }
+    .keyboard-shortcuts kbd {
+      background: #edf2f7;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>Advanced Drawing</h3>
+  <p>Draw, edit, and measure features on the map</p>
+
+  <div class="mode-indicator" id="modeIndicator">
+    <span class="mode-icon">🖱️</span>
+    <span class="mode-text">Select Mode - Click to select features</span>
+  </div>
+
+  <div class="section-title">Statistics</div>
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="value" id="pointCount">0</div>
+      <div class="label">Points</div>
+    </div>
+    <div class="stat-box">
+      <div class="value" id="lineCount">0</div>
+      <div class="label">Lines</div>
+    </div>
+    <div class="stat-box">
+      <div class="value" id="polygonCount">0</div>
+      <div class="label">Polygons</div>
+    </div>
+  </div>
+
+  <div class="measurement-box" id="measurementBox" style="display: none;">
+    <div class="measurement-row">
+      <span class="label">Total Length:</span>
+      <span class="value" id="totalLength">0 km</span>
+    </div>
+    <div class="measurement-row">
+      <span class="label">Total Area:</span>
+      <span class="value" id="totalArea">0 km²</span>
+    </div>
+    <div class="measurement-row">
+      <span class="label">Perimeter:</span>
+      <span class="value" id="totalPerimeter">0 km</span>
+    </div>
+  </div>
+
+  <div class="section-title">Colors</div>
+  <div class="color-row">
+    <label>Points</label>
+    <input type="color" id="pointColor" value="#38a169" onchange="updateColors()">
+  </div>
+  <div class="color-row">
+    <label>Lines</label>
+    <input type="color" id="lineColor" value="#e53e3e" onchange="updateColors()">
+  </div>
+  <div class="color-row">
+    <label>Polygons</label>
+    <input type="color" id="polygonColor" value="#3182ce" onchange="updateColors()">
+  </div>
+
+  <div class="section-title">Features (<span id="featureCount">0</span>)</div>
+  <div class="feature-list" id="featureList">
+    <div style="color: #a0aec0; font-size: 12px; text-align: center; padding: 20px;">
+      No features yet. Use the drawing tools above the map.
+    </div>
+  </div>
+
+  <div class="section-title">Actions</div>
+  <div class="action-btns">
+    <button class="action-btn success" onclick="exportGeoJSON()">Export JSON</button>
+    <button class="action-btn success" onclick="downloadGeoJSON()">Download</button>
+    <button class="action-btn" onclick="undoLast()">Undo</button>
+    <button class="action-btn danger" onclick="deleteAll()">Clear All</button>
+  </div>
+
+  <div class="import-section">
+    <input type="file" id="importFile" accept=".json,.geojson" onchange="importGeoJSON(event)">
+    <label for="importFile" class="import-label">
+      Drop or click to import GeoJSON
+    </label>
+  </div>
+
+  <div class="keyboard-shortcuts">
+    <div><span>Delete selected</span><kbd>Del</kbd></div>
+    <div><span>Cancel drawing</span><kbd>Esc</kbd></div>
+    <div><span>Complete polygon</span><kbd>Enter</kbd></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" style="display: none;"></div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  // Style items for the style switcher plugin
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  function setEnglishLabels(mapInstance) {
+    const m = mapInstance || map;
+    const style = m.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { m.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  let pointColor = '#38a169';
+  let lineColor = '#e53e3e';
+  let polygonColor = '#3182ce';
+  let featureHistory = [];
+  let featureCounter = 1;
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [55.0, 25.0],
+    zoom: 9
+  });
+
+  // Build draw styles dynamically
+  function getDrawStyles() {
+    return [
+      // Polygon fill
+      {
+        id: 'gl-draw-polygon-fill',
+        type: 'fill',
+        filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+        paint: {
+          'fill-color': polygonColor,
+          'fill-outline-color': polygonColor,
+          'fill-opacity': 0.2
+        }
+      },
+      // Polygon fill - static
+      {
+        id: 'gl-draw-polygon-fill-static',
+        type: 'fill',
+        filter: ['all', ['==', '$type', 'Polygon'], ['==', 'mode', 'static']],
+        paint: {
+          'fill-color': polygonColor,
+          'fill-outline-color': polygonColor,
+          'fill-opacity': 0.2
+        }
+      },
+      // Polygon outline
+      {
+        id: 'gl-draw-polygon-stroke',
+        type: 'line',
+        filter: ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': polygonColor, 'line-width': 3 }
+      },
+      // Polygon outline - static
+      {
+        id: 'gl-draw-polygon-stroke-static',
+        type: 'line',
+        filter: ['all', ['==', '$type', 'Polygon'], ['==', 'mode', 'static']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': polygonColor, 'line-width': 3 }
+      },
+      // Polygon outline - active
+      {
+        id: 'gl-draw-polygon-stroke-active',
+        type: 'line',
+        filter: ['all', ['==', '$type', 'Polygon'], ['==', 'active', 'true']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#fbbf24', 'line-width': 4, 'line-dasharray': [2, 2] }
+      },
+      // Line
+      {
+        id: 'gl-draw-line',
+        type: 'line',
+        filter: ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': lineColor, 'line-width': 3 }
+      },
+      // Line - static
+      {
+        id: 'gl-draw-line-static',
+        type: 'line',
+        filter: ['all', ['==', '$type', 'LineString'], ['==', 'mode', 'static']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': lineColor, 'line-width': 3 }
+      },
+      // Line - active
+      {
+        id: 'gl-draw-line-active',
+        type: 'line',
+        filter: ['all', ['==', '$type', 'LineString'], ['==', 'active', 'true']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#fbbf24', 'line-width': 4, 'line-dasharray': [2, 2] }
+      },
+      // Point outer
+      {
+        id: 'gl-draw-point-outer',
+        type: 'circle',
+        filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature'], ['!=', 'active', 'true']],
+        paint: { 'circle-radius': 10, 'circle-color': pointColor }
+      },
+      // Point outer - active
+      {
+        id: 'gl-draw-point-outer-active',
+        type: 'circle',
+        filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature'], ['==', 'active', 'true']],
+        paint: { 'circle-radius': 12, 'circle-color': '#fbbf24' }
+      },
+      // Point inner
+      {
+        id: 'gl-draw-point-inner',
+        type: 'circle',
+        filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'feature']],
+        paint: { 'circle-radius': 4, 'circle-color': '#ffffff' }
+      },
+      // Vertex points
+      {
+        id: 'gl-draw-vertex',
+        type: 'circle',
+        filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'vertex'], ['!=', 'active', 'true']],
+        paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-width': 2, 'circle-stroke-color': polygonColor }
+      },
+      // Vertex - active
+      {
+        id: 'gl-draw-vertex-active',
+        type: 'circle',
+        filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'vertex'], ['==', 'active', 'true']],
+        paint: { 'circle-radius': 8, 'circle-color': '#fbbf24', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
+      },
+      // Midpoint
+      {
+        id: 'gl-draw-midpoint',
+        type: 'circle',
+        filter: ['all', ['==', '$type', 'Point'], ['==', 'meta', 'midpoint']],
+        paint: { 'circle-radius': 4, 'circle-color': polygonColor }
+      }
+    ];
+  }
+
+  // Initialize Draw control
+  const draw = new MapboxDraw({
+    displayControlsDefault: false,
+    controls: {
+      point: true,
+      line_string: true,
+      polygon: true,
+      trash: true
+    },
+    defaultMode: 'simple_select',
+    styles: getDrawStyles()
+  });
+
+  map.addControl(draw, 'top-left');
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+  // Add style switcher control
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      const data = window.draw.getAll();
+      map.setStyle(to.styleUrl);
+      map.once('style.load', () => {
+        setEnglishLabels(map);
+        if (data.features.length > 0) {
+          window.draw.set(data);
+        }
+        updateCounts();
+        renderFeatureList();
+      });
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  // Update colors
+  function updateColors() {
+    pointColor = document.getElementById('pointColor').value;
+    lineColor = document.getElementById('lineColor').value;
+    polygonColor = document.getElementById('polygonColor').value;
+
+    // Save current features
+    const data = draw.getAll();
+
+    // Recreate draw with new styles
+    map.removeControl(draw);
+
+    const newDraw = new MapboxDraw({
+      displayControlsDefault: false,
+      controls: { point: true, line_string: true, polygon: true, trash: true },
+      defaultMode: 'simple_select',
+      styles: getDrawStyles()
+    });
+
+    // This is a workaround - we need to reassign
+    window.draw = newDraw;
+    map.addControl(newDraw, 'top-left');
+
+    // Restore features
+    if (data.features.length > 0) {
+      newDraw.set(data);
+    }
+
+    updateCounts();
+    renderFeatureList();
+  }
+
+  // Make draw globally accessible for color updates
+  window.draw = draw;
+
+  // Update counts and measurements
+  function updateCounts() {
+    const all = window.draw.getAll();
+    let points = 0, lines = 0, polygons = 0;
+    let totalLength = 0, totalArea = 0, totalPerimeter = 0;
+
+    all.features.forEach(f => {
+      if (f.geometry.type === 'Point') {
+        points++;
+      } else if (f.geometry.type === 'LineString') {
+        lines++;
+        totalLength += turf.length(f, { units: 'kilometers' });
+      } else if (f.geometry.type === 'Polygon') {
+        polygons++;
+        totalArea += turf.area(f) / 1000000; // Convert to km²
+        totalPerimeter += turf.length(turf.polygonToLine(f), { units: 'kilometers' });
+      }
+    });
+
+    document.getElementById('pointCount').textContent = points;
+    document.getElementById('lineCount').textContent = lines;
+    document.getElementById('polygonCount').textContent = polygons;
+    document.getElementById('featureCount').textContent = all.features.length;
+
+    // Update measurements
+    const measureBox = document.getElementById('measurementBox');
+    if (lines > 0 || polygons > 0) {
+      measureBox.style.display = 'block';
+      document.getElementById('totalLength').textContent = totalLength.toFixed(2) + ' km';
+      document.getElementById('totalArea').textContent = totalArea.toFixed(4) + ' km²';
+      document.getElementById('totalPerimeter').textContent = totalPerimeter.toFixed(2) + ' km';
+    } else {
+      measureBox.style.display = 'none';
+    }
+  }
+
+  // Render feature list
+  function renderFeatureList() {
+    const all = window.draw.getAll();
+    const container = document.getElementById('featureList');
+
+    if (all.features.length === 0) {
+      container.innerHTML = `
+        <div style="color: #a0aec0; font-size: 12px; text-align: center; padding: 20px;">
+          No features yet. Use the drawing tools above the map.
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    all.features.forEach((f, index) => {
+      const icons = { Point: '📍', LineString: '📏', Polygon: '⬡' };
+      const types = { Point: 'Point', LineString: 'Line', Polygon: 'Polygon' };
+
+      let measurement = '';
+      if (f.geometry.type === 'LineString') {
+        measurement = turf.length(f, { units: 'kilometers' }).toFixed(2) + ' km';
+      } else if (f.geometry.type === 'Polygon') {
+        measurement = (turf.area(f) / 1000000).toFixed(4) + ' km²';
+      }
+
+      const name = f.properties.name || `Feature ${index + 1}`;
+
+      const div = document.createElement('div');
+      div.className = 'feature-item';
+      div.innerHTML = `
+        <span class="icon">${icons[f.geometry.type]}</span>
+        <span class="name">${name}</span>
+        <span class="type">${measurement || types[f.geometry.type]}</span>
+        <button class="delete-btn" onclick="deleteFeature('${f.id}', event)">X</button>
+      `;
+      div.onclick = (e) => {
+        if (e.target.classList.contains('delete-btn')) return;
+        flyToFeature(f);
+        window.draw.changeMode('simple_select', { featureIds: [f.id] });
+      };
+      container.appendChild(div);
+    });
+  }
+
+  function flyToFeature(feature) {
+    const bbox = turf.bbox(feature);
+    map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], {
+      padding: 100,
+      maxZoom: 15
+    });
+  }
+
+  function deleteFeature(id, event) {
+    event.stopPropagation();
+    window.draw.delete(id);
+    updateCounts();
+    renderFeatureList();
+  }
+
+  // Mode change indicator
+  function updateModeIndicator(mode) {
+    const indicator = document.getElementById('modeIndicator');
+    const modes = {
+      'simple_select': { icon: '🖱️', text: 'Select Mode - Click to select features' },
+      'direct_select': { icon: '✏️', text: 'Edit Mode - Drag vertices to edit' },
+      'draw_point': { icon: '📍', text: 'Drawing Point - Click to place' },
+      'draw_line_string': { icon: '📏', text: 'Drawing Line - Click to add points, double-click to finish' },
+      'draw_polygon': { icon: '⬡', text: 'Drawing Polygon - Click to add points, click first point to close' }
+    };
+    const m = modes[mode] || { icon: '🖱️', text: mode };
+    indicator.innerHTML = `<span class="mode-icon">${m.icon}</span><span class="mode-text">${m.text}</span>`;
+  }
+
+  // Listen to draw events
+  map.on('draw.create', (e) => {
+    // Add name to feature
+    e.features.forEach(f => {
+      f.properties.name = `Feature ${featureCounter++}`;
+    });
+    featureHistory.push({ type: 'create', features: e.features.map(f => ({ ...f })) });
+    updateCounts();
+    renderFeatureList();
+  });
+
+  map.on('draw.delete', () => {
+    updateCounts();
+    renderFeatureList();
+  });
+
+  map.on('draw.update', () => {
+    updateCounts();
+    renderFeatureList();
+  });
+
+  map.on('draw.modechange', (e) => {
+    updateModeIndicator(e.mode);
+  });
+
+  map.on('draw.selectionchange', (e) => {
+    // Highlight selected in list
+    document.querySelectorAll('.feature-item').forEach(el => el.classList.remove('selected'));
+    if (e.features.length > 0) {
+      const selectedIds = e.features.map(f => f.id);
+      document.querySelectorAll('.feature-item').forEach((el, index) => {
+        const all = window.draw.getAll();
+        if (all.features[index] && selectedIds.includes(all.features[index].id)) {
+          el.classList.add('selected');
+        }
+      });
+    }
+  });
+
+  // Export functions
+  function exportGeoJSON() {
+    const data = window.draw.getAll();
+    if (data.features.length === 0) {
+      alert('No features to export!');
+      return;
+    }
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+      alert(`Copied ${data.features.length} feature(s) to clipboard!`);
+    }).catch(() => {
+      console.log(JSON.stringify(data, null, 2));
+      alert('GeoJSON logged to console');
+    });
+  }
+
+  function downloadGeoJSON() {
+    const data = window.draw.getAll();
+    if (data.features.length === 0) {
+      alert('No features to download!');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'uae-features.geojson';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function importGeoJSON(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const geojson = JSON.parse(e.target.result);
+        if (geojson.type === 'FeatureCollection' && geojson.features) {
+          geojson.features.forEach(f => {
+            window.draw.add(f);
+          });
+          updateCounts();
+          renderFeatureList();
+          alert(`Imported ${geojson.features.length} feature(s)!`);
+        } else if (geojson.type === 'Feature') {
+          window.draw.add(geojson);
+          updateCounts();
+          renderFeatureList();
+          alert('Imported 1 feature!');
+        } else {
+          alert('Invalid GeoJSON format');
+        }
+      } catch (err) {
+        alert('Error parsing GeoJSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function undoLast() {
+    if (featureHistory.length === 0) {
+      alert('Nothing to undo');
+      return;
+    }
+    const last = featureHistory.pop();
+    if (last.type === 'create') {
+      last.features.forEach(f => {
+        window.draw.delete(f.id);
+      });
+    }
+    updateCounts();
+    renderFeatureList();
+  }
+
+  function deleteAll() {
+    if (!confirm('Delete all features?')) return;
+    window.draw.deleteAll();
+    featureHistory = [];
+    featureCounter = 1;
+    updateCounts();
+    renderFeatureList();
+  }
+
+  // Initialize
+  map.on('load', () => {
+    setEnglishLabels(map);
+    // Add sample features
+    window.draw.add({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [55.2744, 25.1972] },
+      properties: { name: 'Burj Khalifa' }
+    });
+
+    window.draw.add({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [54.4747, 24.4128] },
+      properties: { name: 'Sheikh Zayed Mosque' }
+    });
+
+    window.draw.add({
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [55.12, 25.08], [55.18, 25.08], [55.18, 25.14], [55.12, 25.14], [55.12, 25.08]
+        ]]
+      },
+      properties: { name: 'Dubai Marina Area' }
+    });
+
+    featureCounter = 4;
+    updateCounts();
+    renderFeatureList();
+    updateModeIndicator('simple_select');
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      const selected = window.draw.getSelected();
+      if (selected.features.length > 0) {
+        selected.features.forEach(f => window.draw.delete(f.id));
+        updateCounts();
+        renderFeatureList();
+      }
+    }
+    if (e.key === 'Escape') {
+      window.draw.changeMode('simple_select');
+    }
+  });
+</script>
+</body>
+</html>

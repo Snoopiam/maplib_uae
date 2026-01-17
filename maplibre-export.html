@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map Export - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/index.umd.js"></script>
+  <link href="https://unpkg.com/map-gl-style-switcher@0.9.2/dist/map-gl-style-switcher.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      width: 300px;
+    }
+    .control-panel h3 { margin: 0 0 5px; color: #1a365d; font-size: 18px; }
+    .control-panel p { margin: 0 0 15px; color: #666; font-size: 12px; }
+
+    .control-section {
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .control-section:last-child { border-bottom: none; }
+    .control-section h4 {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .control-row {
+      margin-bottom: 12px;
+    }
+    .control-row label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .control-row select, .control-row input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .size-presets {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .size-btn {
+      padding: 8px 5px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      transition: all 0.2s;
+    }
+    .size-btn:hover { border-color: #3182ce; }
+    .size-btn.active { background: #3182ce; color: white; border-color: #3182ce; }
+
+    .size-inputs {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+    .size-inputs input {
+      padding: 8px;
+      border: 2px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 13px;
+      text-align: center;
+    }
+    .size-inputs span { color: #999; }
+
+    .export-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 10px;
+    }
+    .export-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    .export-btn:active { transform: translateY(0); }
+    .export-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .export-btn.secondary {
+      background: white;
+      color: #3182ce;
+      border: 2px solid #3182ce;
+      margin-top: 8px;
+    }
+    .export-btn.secondary:hover {
+      background: #ebf8ff;
+      box-shadow: none;
+    }
+
+    .preview-box {
+      background: #f7fafc;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      margin-top: 15px;
+    }
+    .preview-box .dims {
+      font-size: 20px;
+      font-weight: 700;
+      color: #3182ce;
+    }
+    .preview-box .label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    .status-msg {
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-top: 10px;
+      display: none;
+    }
+    .status-msg.success { background: #c6f6d5; color: #22543d; display: block; }
+    .status-msg.error { background: #fed7d7; color: #c53030; display: block; }
+    .status-msg.loading { background: #bee3f8; color: #2b6cb0; display: block; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .quality-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .quality-btn {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+    }
+    .quality-btn:hover { border-color: #3182ce; }
+    .quality-btn.active { background: #38a169; color: white; border-color: #38a169; }
+
+    #exportContainer {
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="exportContainer"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">&larr;</a>
+
+<div class="control-panel">
+  <h3>Export Map</h3>
+  <p>Download the current map view as an image</p>
+
+  <div class="control-section">
+    <h4>Export Format</h4>
+    <div class="control-row">
+      <select id="formatSelect">
+        <option value="png">PNG (High Quality)</option>
+        <option value="jpeg">JPEG (Smaller Size)</option>
+        <option value="webp">WebP (Modern)</option>
+      </select>
+    </div>
+    <div class="quality-row" id="qualityRow" style="display: none;">
+      <button class="quality-btn" onclick="setQuality(0.7)">Low</button>
+      <button class="quality-btn active" onclick="setQuality(0.85)">Medium</button>
+      <button class="quality-btn" onclick="setQuality(0.95)">High</button>
+    </div>
+  </div>
+
+  <div class="control-section">
+    <h4>Image Size</h4>
+    <div class="size-presets">
+      <button class="size-btn" onclick="setSize(800, 600)">800x600</button>
+      <button class="size-btn active" onclick="setSize(1280, 720)">1280x720</button>
+      <button class="size-btn" onclick="setSize(1920, 1080)">1920x1080</button>
+      <button class="size-btn" onclick="setSize(2560, 1440)">2K</button>
+      <button class="size-btn" onclick="setSize(3840, 2160)">4K</button>
+      <button class="size-btn" onclick="setCurrentSize()">Current</button>
+    </div>
+    <div class="size-inputs">
+      <input type="number" id="widthInput" value="1280" onchange="updatePreview()">
+      <span>x</span>
+      <input type="number" id="heightInput" value="720" onchange="updatePreview()">
+    </div>
+  </div>
+
+  <div class="control-section">
+    <h4>Filename</h4>
+    <div class="control-row">
+      <input type="text" id="filenameInput" value="uae-map" placeholder="Enter filename">
+    </div>
+  </div>
+
+  <div class="preview-box">
+    <div class="dims" id="previewDims">1280 x 720</div>
+    <div class="label">Export Resolution</div>
+  </div>
+
+  <button class="export-btn" id="exportBtn" onclick="exportMap()">Download Map Image</button>
+  <button class="export-btn secondary" onclick="copyToClipboard()">Copy to Clipboard</button>
+
+  <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  };
+
+  // Style items for the style switcher plugin
+  const styleItems = [
+    { id: 'voyager', name: 'Voyager', styleUrl: mapStyles.voyager, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f0f4f8" width="40" height="40"/><rect fill="%234299e1" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%2348bb78" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'positron', name: 'Positron', styleUrl: mapStyles.positron, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%23f7fafc" width="40" height="40"/><rect fill="%23cbd5e0" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%23e2e8f0" x="20" y="5" width="15" height="18" rx="2"/></svg>' },
+    { id: 'dark', name: 'Dark Matter', styleUrl: mapStyles.dark, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231a202c" width="40" height="40"/><rect fill="%232d3748" x="5" y="25" width="30" height="10" rx="2"/><rect fill="%234a5568" x="20" y="5" width="15" height="18" rx="2"/></svg>' }
+  ];
+
+  let currentStyle = 'voyager';
+  let jpegQuality = 0.85;
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.5, 24.4],
+    zoom: 8,
+    preserveDrawingBuffer: true
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+  }), 'bottom-right');
+
+  // Add style switcher control
+  const styleSwitcher = new mapglStyleSwitcher.StyleSwitcherControl({
+    styles: styleItems,
+    theme: 'auto',
+    showLabels: true,
+    showImages: true,
+    onAfterStyleChange: (from, to) => {
+      currentStyle = to.id;
+      map.setStyle(to.styleUrl);
+    }
+  });
+  map.addControl(styleSwitcher, 'top-right');
+
+  map.on('load', () => {
+    setEnglishLabels();
+
+    // Add UAE markers
+    new maplibregl.Marker({ color: '#3182ce' })
+      .setLngLat([54.3773, 24.4539])
+      .setPopup(new maplibregl.Popup().setHTML('<strong>Abu Dhabi</strong><br>Capital of UAE'))
+      .addTo(map);
+
+    new maplibregl.Marker({ color: '#e53e3e' })
+      .setLngLat([55.2708, 25.2048])
+      .setPopup(new maplibregl.Popup().setHTML('<strong>Dubai</strong><br>Business Hub'))
+      .addTo(map);
+
+    new maplibregl.Marker({ color: '#38a169' })
+      .setLngLat([55.9432, 25.4052])
+      .setPopup(new maplibregl.Popup().setHTML('<strong>Sharjah</strong><br>Cultural Capital'))
+      .addTo(map);
+  });
+
+  // Show/hide quality options based on format
+  document.getElementById('formatSelect').addEventListener('change', (e) => {
+    const showQuality = e.target.value === 'jpeg' || e.target.value === 'webp';
+    document.getElementById('qualityRow').style.display = showQuality ? 'flex' : 'none';
+  });
+
+  function setSize(width, height) {
+    document.querySelectorAll('.size-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('widthInput').value = width;
+    document.getElementById('heightInput').value = height;
+    updatePreview();
+  }
+
+  function setCurrentSize() {
+    document.querySelectorAll('.size-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    const canvas = map.getCanvas();
+    document.getElementById('widthInput').value = canvas.width;
+    document.getElementById('heightInput').value = canvas.height;
+    updatePreview();
+  }
+
+  function setQuality(q) {
+    jpegQuality = q;
+    document.querySelectorAll('.quality-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+  }
+
+  function updatePreview() {
+    const width = document.getElementById('widthInput').value;
+    const height = document.getElementById('heightInput').value;
+    document.getElementById('previewDims').textContent = `${width} x ${height}`;
+  }
+
+  function showStatus(message, type) {
+    const status = document.getElementById('statusMsg');
+    status.textContent = message;
+    status.className = 'status-msg ' + type;
+
+    if (type === 'success') {
+      setTimeout(() => { status.className = 'status-msg'; }, 4000);
+    }
+  }
+
+  function setEnglishLabels(mapInstance) {
+    const m = mapInstance || map;
+    const style = m.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { m.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  async function exportMap() {
+    const width = parseInt(document.getElementById('widthInput').value);
+    const height = parseInt(document.getElementById('heightInput').value);
+    const format = document.getElementById('formatSelect').value;
+    const filename = document.getElementById('filenameInput').value || 'map';
+    const exportBtn = document.getElementById('exportBtn');
+
+    exportBtn.disabled = true;
+    showStatus('Creating export map...', 'loading');
+
+    try {
+      // Create a hidden container for the export map
+      const container = document.getElementById('exportContainer');
+      container.innerHTML = '<div id="exportMap" style="width:' + width + 'px;height:' + height + 'px;"></div>';
+
+      // Create export map with same view
+      const exportMap = new maplibregl.Map({
+        container: 'exportMap',
+        style: mapStyles[currentStyle],
+        center: map.getCenter(),
+        zoom: map.getZoom(),
+        bearing: map.getBearing(),
+        pitch: map.getPitch(),
+        preserveDrawingBuffer: true,
+        interactive: false
+      });
+
+      showStatus('Loading tiles...', 'loading');
+
+      // Wait for map to load
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Map load timeout')), 30000);
+
+        exportMap.on('load', () => {
+          setEnglishLabels(exportMap);
+        });
+
+        exportMap.on('idle', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+
+        exportMap.on('error', (e) => {
+          clearTimeout(timeout);
+          reject(e);
+        });
+      });
+
+      // Additional wait for all tiles
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      showStatus('Generating image...', 'loading');
+
+      const canvas = exportMap.getCanvas();
+
+      // Get image data
+      const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+      const quality = (format === 'jpeg' || format === 'webp') ? jpegQuality : 1;
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b && b.size > 0) resolve(b);
+          else reject(new Error('Failed to create image'));
+        }, mimeType, quality);
+      });
+
+      // Download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Cleanup
+      exportMap.remove();
+      container.innerHTML = '';
+
+      const sizeKB = Math.round(blob.size / 1024);
+      showStatus(`Downloaded ${filename}.${format} (${sizeKB} KB, ${width}x${height})`, 'success');
+
+    } catch (err) {
+      console.error('Export error:', err);
+      showStatus('Export failed: ' + err.message, 'error');
+      document.getElementById('exportContainer').innerHTML = '';
+    }
+
+    exportBtn.disabled = false;
+  }
+
+  async function copyToClipboard() {
+    showStatus('Preparing image...', 'loading');
+
+    try {
+      // Wait for map to be idle
+      await new Promise(resolve => {
+        if (map.loaded() && map.areTilesLoaded()) resolve();
+        else map.once('idle', resolve);
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const canvas = map.getCanvas();
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b && b.size > 0) resolve(b);
+          else reject(new Error('Failed to create image'));
+        }, 'image/png');
+      });
+
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+
+      showStatus('Map copied to clipboard!', 'success');
+    } catch (err) {
+      console.error('Clipboard error:', err);
+      showStatus('Could not copy. Try downloading instead.', 'error');
+    }
+  }
+
+  map.on('style.load', () => setEnglishLabels());
+</script>
+</body>
+</html>

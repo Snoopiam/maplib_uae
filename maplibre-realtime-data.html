@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Realtime Data - MapLibre GL JS</title>
+  <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+
+    .style-selector {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+    }
+    .style-selector select {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      cursor: pointer;
+    }
+
+    .control-panel {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      background: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      z-index: 1000;
+      min-width: 250px;
+    }
+    .control-panel h3 { margin: 0 0 10px; color: #1a365d; font-size: 16px; }
+    .control-panel p { margin: 5px 0; color: #666; font-size: 13px; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #38a169;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+    .coords {
+      font-family: monospace;
+      background: #f0f4f8;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+    .btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: #3182ce; color: white; }
+    .btn-primary:hover { background: #2c5282; }
+    .btn-danger { background: #e53e3e; color: white; margin-left: 5px; }
+    .btn-danger:hover { background: #c53030; }
+
+    .back-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #1a365d;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    /* Pulse marker animation */
+    .pulse-marker {
+      width: 20px;
+      height: 20px;
+      background: #e53e3e;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 0 0 rgba(229, 62, 62, 0.4);
+      animation: markerPulse 2s infinite;
+    }
+    @keyframes markerPulse {
+      0% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.6); }
+      70% { box-shadow: 0 0 0 15px rgba(229, 62, 62, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<a href="maplibre-examples-index.html" class="back-link">← Back to Index</a>
+
+<div class="style-selector">
+  <select id="styleSelect" onchange="changeStyle(this.value)">
+    <option value="voyager">Voyager (Detailed)</option>
+    <option value="positron">Positron (Light)</option>
+    <option value="dark">Dark Matter</option>
+    <option value="streets">OSM Streets</option>
+  </select>
+</div>
+
+<div class="control-panel">
+  <h3>Live Realtime Data</h3>
+  <p>Simulating a moving vehicle across UAE</p>
+  <div class="status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Tracking active</span>
+  </div>
+  <div class="coords" id="coords">Waiting for data...</div>
+  <div>
+    <button class="btn btn-primary" id="toggleBtn" onclick="toggleTracking()">Pause</button>
+    <button class="btn btn-danger" onclick="resetPosition()">Reset</button>
+  </div>
+</div>
+
+<script>
+  const mapStyles = {
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    streets: 'https://tiles.openfreemap.org/styles/bright/style.json'
+  };
+
+  // UAE route points (Abu Dhabi to Dubai and around)
+  const routePoints = [
+    [54.3773, 24.4539], // Abu Dhabi Corniche
+    [54.4341, 24.4601], // Saadiyat
+    [54.5013, 24.4178], // Yas Island
+    [54.6, 24.5],
+    [54.8, 24.7],
+    [55.0, 24.9],
+    [55.1378, 25.0762], // Palm Jumeirah
+    [55.1862, 25.0809], // Dubai Marina
+    [55.2744, 25.1972], // Downtown Dubai
+    [55.3046, 25.2486], // Dubai Hills
+  ];
+
+  let currentIndex = 0;
+  let isTracking = true;
+  let intervalId = null;
+  let marker = null;
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles.voyager,
+    center: [54.5, 24.5],
+    zoom: 8
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+  map.on('load', () => {
+    // Create pulse marker element
+    const el = document.createElement('div');
+    el.className = 'pulse-marker';
+
+    marker = new maplibregl.Marker(el)
+      .setLngLat(routePoints[0])
+      .addTo(map);
+
+    // Add route line
+    map.addSource('route', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: routePoints }
+      }
+    });
+
+    map.addLayer({
+      id: 'route-line',
+      type: 'line',
+      source: 'route',
+      paint: {
+        'line-color': '#3182ce',
+        'line-width': 3,
+        'line-dasharray': [2, 2]
+      }
+    });
+
+    startTracking();
+  });
+
+  function startTracking() {
+    intervalId = setInterval(() => {
+      if (!isTracking) return;
+
+      currentIndex = (currentIndex + 1) % routePoints.length;
+      const coords = routePoints[currentIndex];
+
+      // Interpolate for smoother movement
+      marker.setLngLat(coords);
+
+      document.getElementById('coords').innerHTML =
+        `Lng: ${coords[0].toFixed(4)}<br>Lat: ${coords[1].toFixed(4)}<br>Point: ${currentIndex + 1}/${routePoints.length}`;
+
+      map.easeTo({ center: coords, duration: 1500 });
+    }, 2000);
+  }
+
+  function toggleTracking() {
+    isTracking = !isTracking;
+    const btn = document.getElementById('toggleBtn');
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+
+    if (isTracking) {
+      btn.textContent = 'Pause';
+      dot.style.background = '#38a169';
+      dot.style.animation = 'pulse 1.5s infinite';
+      text.textContent = 'Tracking active';
+    } else {
+      btn.textContent = 'Resume';
+      dot.style.background = '#d69e2e';
+      dot.style.animation = 'none';
+      text.textContent = 'Tracking paused';
+    }
+  }
+
+  function resetPosition() {
+    currentIndex = 0;
+    marker.setLngLat(routePoints[0]);
+    map.flyTo({ center: routePoints[0], zoom: 10 });
+    document.getElementById('coords').innerHTML =
+      `Lng: ${routePoints[0][0].toFixed(4)}<br>Lat: ${routePoints[0][1].toFixed(4)}<br>Point: 1/${routePoints.length}`;
+  }
+
+  function setEnglishLabels() {
+    const style = map.getStyle();
+    if (!style || !style.layers) return;
+    style.layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        try { map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:en'], ['get', 'name']]); } catch (e) {}
+      }
+    });
+  }
+
+  function changeStyle(styleName) {
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    map.setStyle(mapStyles[styleName]);
+    map.once('style.load', () => {
+      setEnglishLabels();
+      // Re-add route line after style change
+      map.addSource('route', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: routePoints } }
+      });
+      map.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route',
+        paint: { 'line-color': '#3182ce', 'line-width': 3, 'line-dasharray': [2, 2] }
+      });
+    });
+  }
+
+  map.on('style.load', setEnglishLabels);
+</script>
+</body>
+</html>
